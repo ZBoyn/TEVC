@@ -174,34 +174,43 @@ class Initializer:
             List[Solution]: 初始化后的种群
         """
         print("初始化种群...")
-        population = [None] * self.pop_size
+        if h1_count + h2_count > self.pop_size:
+            raise ValueError("启发式个体总数不能超过种群大小。")
         
-        print("使用启发式1生成个体...")
-        elite1 = self.generate_with_heuristic1()
-        population[0] = elite1
+        population = []
+        elites = []
         
-        print("使用启发式2生成个体...")
-        elite2 = self.generate_with_heuristic2()
-        population[1] = elite2
+        print(f"使用启发式1生成 {h1_count} 个个体...")
+        for _ in range(h1_count):
+            elite = self.generate_with_heuristic1()
+            population.append(elite)
+            elites.append(elite)
         
-        elites = [elite1, elite2]
+        print(f"使用启发式2生成 {h2_count} 个个体...")
+        for _ in range(h2_count):
+            elite = self.generate_with_heuristic2()
+            population.append(elite)
+            elites.append(elite)
         
+        current_pop_size = len(population)
         # 循环生成剩余的个体
-        for p in range(2, self.pop_size):
+        for p in range(current_pop_size, self.pop_size):
             if p % 3 != 2:
+                if elites: # 确保精英池不为空
+                    # 对其序列进行多次交换操作
+                    sequence_to_mutate = template_solution.sequence
+                    for _ in range(mutation_swaps):
+                        idx1, idx2 = np.random.choice(len(sequence_to_mutate), size=2, replace=False)
+                        sequence_to_mutate[idx1], sequence_to_mutate[idx2] = sequence_to_mutate[idx2], sequence_to_mutate[idx1]
+                    
+                    population.append(template_solution)
+                else: # 如果没有精英，则退化为随机生成
+                    population.append(self.generate_randomly())
                 template_solution = elites[np.random.randint(0, 2)].copy()
 
-                # 对其序列进行多次交换操作
-                sequence_to_mutate = template_solution.sequence
-                for _ in range(mutation_swaps):
-                    idx1, idx2 = np.random.choice(len(sequence_to_mutate), size=2, replace=False)
-                    sequence_to_mutate[idx1], sequence_to_mutate[idx2] = sequence_to_mutate[idx2], sequence_to_mutate[idx1]
-                    
-                population[p] = template_solution
-                
             else:
                 # 每3个个体生成一个随机个体
-                population[p] = self.generate_randomly()
+                population.append(self.generate_randomly())
             
         print("种群初始化完成 共计:", len(population), "个体")
         return population
