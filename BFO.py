@@ -3,6 +3,8 @@ import math
 
 class BFO:
     def __init__(self,
+                 C_initial: float, 
+                 C_final: float,
                  popsize: int,
                  N: int,
                  NC: int,
@@ -35,6 +37,9 @@ class BFO:
         self.NM = NM
         self.Mmax = Mmax
         self.P1 = P1
+        self.C_initial = C_initial
+        self.C_final = C_final
+        self.total_iterations = NC * NR * NM
         
         # 适应度函数及其参数
         self.fitness_function = fitness_function
@@ -47,6 +52,8 @@ class BFO:
         # 序列、适应度和健康度
         self.sequences = np.zeros((self.popsize, self.N), dtype=int)
         self.fitness = np.full(self.popsize, np.inf)  # 初始化为无穷大, 表示未评估
+        self.tec_values = np.full(self.popsize, np.inf)
+        self.tcta_values = np.full(self.popsize, np.inf)
         self.health = np.zeros(self.popsize)          # 初始化为0, 表示未健康
 
         # 全局最优记录
@@ -75,8 +82,8 @@ class BFO:
             if self.fitness[i] < self.global_best_fitness:
                 self.global_best_fitness = self.fitness[i]
                 self.global_best_sequence = self.sequences[i].copy()
-        
-    def _chemotaxis(self):
+
+    def _chemotaxis(self, current_step_size):
         """趋向操作"""
         for p in range(self.popsize):
             # 保存个体 p 在趋向开始前的适应度, 用于累计健康度
@@ -100,7 +107,7 @@ class BFO:
                     deta[:, 1] = np.sin(theta)
 
                 # 移动到新的位置
-                self.positions[p] += deta
+                self.positions[p] += current_step_size * deta
                 
                 # 从新位置解码出新的序列 并计算适应度
                 self._update_sequences_and_fitness(indices_to_update=[p])
@@ -136,30 +143,73 @@ class BFO:
             self.sequences[worst_idx] = self.sequences[best_idx].copy()
             self.fitness[worst_idx] = self.fitness[best_idx]
             
-    def _migration(self):
-        """迁徙操作"""
-        for p in range(self.popsize):
-            if np.random.rand() < self.P1:
-                indices = np.arange(self.N)
-                np.random.shuffle(indices)
-                self.positions[p] = self.positions[p][indices]
-                
-                self._update_sequences_and_fitness(indices_to_update=[p])
-            
+    def _migration(self, strategy='generate_new', w_tcta=0.5, w_tec=0.5):
+        """自适应迁徙操作
+
+        Args:
+            strategy (str): 迁徙时的替换策略。
+                        'generate_new' (默认): 生成全新随机坐标，探索能力强 (推荐)。
+                        'shuffle': 打乱个体当前坐标，进行局部变异。
+        w_tcta (float): TCTA(总工时)在计算迁徙概率时的权重。
+        w_tec (float): TEC(总电费)在计算迁徙概率时的权重。
+        """
+        
+        # 计算出整个种群的目标值范围
+        epsilon = 1e-9
+        tcta_max = self.tcta_values.max()
+        tcta_min = self.tcta_values.min()
+        tcta_range = tcta_max - tcta_min + epsilon
+        
+        tec_max = self.tec_values.max()
+        tec_min = self.tec_values.min()
+        tec_range = tec_max - tec_min + epsilon
+        
+        # 计算每个个体归一化的性能 越高表示越差
+        norm_tcta = (self.tcta_values - tcta_min) / tcta_range
+        norm_tec = (self.tec_values - tec_min) / tec_range
+        
+        # 计算每个个体的"差度" 作为迁徙概率
+        mc = w_tcta * norm_tcta + w_tec * norm_tec
+        
+        # 根据概率决定哪些个体需要迁徙
+        random_trigger = np.random.rand(self.popsize)
+        migration_indices = np.where(random_trigger < mc)[0]
+        
+        # 如果有个体需要迁徙
+        if len(migration_indices) > 0:
+            # print(f"迁徙个体数量: {len(migration_indices)}")
+            for i in migration_indices:
+                if strategy == 'generate_new':
+                    # 生成全新随机坐标
+                    self.positions[i] = np.random.uniform(-1, 1, size=(self.N, 2))
+                elif strategy == 'shuffle':
+                    # 打乱当前坐标
+                    indices = np.arange(self.N)
+                    np.random.shuffle(indices)
+                    self.positions[i] = self.positions[i][indices]
+                else:
+                    raise ValueError("Unsupported migration strategy. Use 'generate_new' or 'shuffle'.")
+
+            self._update_sequences_and_fitness(indices_to_update=migration_indices)
             
     def run(self):
         """执行 BFO 算法"""
+        current_iter = 0
         for l in range(self.NC): # 趋向操作循环
             for j in range(self.NR):
                 self.health.fill(0)
                 
                 for k in range(self.NM):
-                    self._chemotaxis()
+                    progress = current_iter / self.total_iterations
+                    current_C = self.C_initial - (self.C_initial - self.C_final) * progress
+                    
+                    self._chemotaxis(current_step_size=current_C)
+                    current_iter += 1
                     # print(f"  (NC={l+1}, NR={j+1}, NM={k+1}) -> Current Best Fitness: {self.global_best_fitness}")
             
                 self._reproduction()  # 复制操作
-            self._migration() # 迁徙操作
-            
+            self._migration(strategy='generate_new')  # 迁徙操作
+
             print(f"第 {l+1} 代完成, 当前全局最优适应度: {self.global_best_fitness}, 最优序列: {self.global_best_sequence}")
             
         print("\nBFO算法运行结束。")
