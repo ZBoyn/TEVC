@@ -1,6 +1,6 @@
 import numpy as np
 from dataclasses import dataclass, field
-from typing import List, Dict, Any
+from typing import List, Dict
 
 @dataclass
 class ProblemDefinition:
@@ -51,3 +51,11 @@ class Solution:
     objectives: np.ndarray = field(default_factory=lambda: np.full(2, np.inf)) # [TEC, TCTA]
     rank: int = -1
     crowding_distance: float = 0.0
+    
+    def copy(self):
+        """创建解的一个深拷贝。"""
+        return Solution(sequence=self.sequence.copy(),
+                        put_off=self.put_off.copy(),
+                        objectives=self.objectives.copy(),
+                        rank=self.rank,
+                        crowding_distance=self.crowding_distance)
