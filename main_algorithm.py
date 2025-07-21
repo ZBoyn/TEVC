@@ -1,9 +1,9 @@
 from config import ProblemDefinition, Solution
-from heuInit import Initializer
+from heu_init import Initializer
 import numpy as np
 from decode import Decoder
 from typing import List
-from moeaTools import non_dominated_sort, is_dominated, crowding_distance_assignment
+from moea_tools import non_dominated_sort, is_dominated, crowding_distance_assignment
 from operators import BFO_Operators, LocalSearch_Operators
 
 class EvolutionaryAlgorithm:

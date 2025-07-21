@@ -1,6 +1,6 @@
 import numpy as np
 from config import ProblemDefinition, Solution
-from moeaTools import is_dominated
+from moea_tools import is_dominated
 from typing import List
 
 class BFO_Operators:
