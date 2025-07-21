@@ -45,26 +45,29 @@ class BFO_Operators:
             distances = np.linalg.norm(positions, axis=1)
             new_sequence = np.argsort(distances)
             
-            # 1b. 有偏向性地扰动put_off矩阵
-            new_put_off = current_sol.put_off.copy()
-            if np.random.rand() < put_off_mutation_prob:
-                for _ in range(put_off_mutation_strength):
-                    job_idx = np.random.randint(self.problem.num_jobs)
-                    machine_idx = np.random.randint(self.problem.num_machines)
+            # # 1b. 有偏向性地扰动put_off矩阵
+            # new_put_off = current_sol.put_off.copy()
+            # if np.random.rand() < put_off_mutation_prob:
+            #     for _ in range(put_off_mutation_strength):
+            #         job_idx = np.random.randint(self.problem.num_jobs)
+            #         machine_idx = np.random.randint(self.problem.num_machines)
                     
-                    if new_put_off[job_idx, machine_idx] > 0 and np.random.rand() < 0.7: # 70%概率向0回归
-                        new_put_off[job_idx, machine_idx] -= 1
-                    else:
-                        new_put_off[job_idx, machine_idx] += 1
+            #         if new_put_off[job_idx, machine_idx] > 0 and np.random.rand() < 0.7: # 70%概率向0回归
+            #             new_put_off[job_idx, machine_idx] -= 1
+            #         else:
+            #             new_put_off[job_idx, machine_idx] += 1
                         
             # 1c. 构造并评估候选解
-            trail_sol = Solution(sequence=new_sequence, put_off=new_put_off)
-            self.decoder.decode(trail_sol)
+            # trial_sol = Solution(sequence=new_sequence, put_off=new_put_off)
             
+            # 1c. 构造并评估候选解 (put_off始终为0)
+            trial_sol = Solution(sequence=new_sequence, put_off=np.zeros_like(original_sol.put_off))
+            self.decoder.decode(trial_sol)
+
             # 2. 基于Pareto支配关系决定是否接受移动
-            if is_dominated(trail_sol, current_sol):
+            if is_dominated(trial_sol, current_sol):
                 # 如果新解支配当前解, 则接受新解
-                current_sol = trail_sol
+                current_sol = trial_sol
             else:
                 positions -= current_step_size * deta
             
@@ -103,12 +106,15 @@ class BFO_Operators:
             if child2_seq[idx] == -1: child2_seq[idx] = p1_remaining.pop(0)
         
         # 对putoff执行均匀交叉
-        put_off1, put_off2 = parent1.put_off, parent2.put_off
-        mask = np.random.rand(*put_off1.shape) < 0.5
+        # put_off1, put_off2 = parent1.put_off, parent2.put_off
+        # mask = np.random.rand(*put_off1.shape) < 0.5
         
-        child1_put_off = np.where(mask, put_off1, put_off2)
-        child2_put_off = np.where(mask, put_off2, put_off1)
+        # child1_put_off = np.where(mask, put_off1, put_off2)
+        # child2_put_off = np.where(mask, put_off2, put_off1)
 
+        child1_put_off = np.zeros((self.problem.num_jobs, self.problem.num_machines), dtype=int)
+        child2_put_off = np.zeros((self.problem.num_jobs, self.problem.num_machines), dtype=int)
+        
         child1 = Solution(sequence=child1_seq, put_off=child1_put_off)
         child2 = Solution(sequence=child2_seq, put_off=child2_put_off)
         return child1, child2

@@ -1,5 +1,5 @@
 from config import ProblemDefinition, Solution
-from data_loader import load_problem_from_file
+from dataLoader import load_problem_from_file
 from mainAlgorithm import EvolutionaryAlgorithm
 from results_handler import save_and_plot_results
 

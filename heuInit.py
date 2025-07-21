@@ -4,10 +4,9 @@ from typing import List
 
 class Initializer:
     """根据不同策略初始化解的种群"""
-    def __init__(self, problem_definition: ProblemDefinition, pop_size: int, init_params: dict):
+    def __init__(self, problem_definition: ProblemDefinition, pop_size: int):
         self.problem = problem_definition
         self.pop_size = pop_size
-        self.params = init_params
 
         self.problem.agent_priority = self._calculate_agent_priorities()
     
@@ -199,6 +198,7 @@ class Initializer:
             if p % 3 != 2:
                 if elites: # 确保精英池不为空
                     # 对其序列进行多次交换操作
+                    template_solution = elites[np.random.randint(0, len(elites))].copy()
                     sequence_to_mutate = template_solution.sequence
                     for _ in range(mutation_swaps):
                         idx1, idx2 = np.random.choice(len(sequence_to_mutate), size=2, replace=False)

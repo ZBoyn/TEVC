@@ -52,7 +52,10 @@ class Decoder:
                 
                 # 3. 应用电价时段内的紧凑排列约束
                 current_period_idx = np.searchsorted(self.problem.period_start_times, delayed_est, side='right') - 1
-                period_end_time = self.problem.period_start_times[current_period_idx + 1]
+                if current_period_idx + 1 < len(self.problem.period_start_times):
+                    period_end_time = self.problem.period_start_times[current_period_idx + 1]
+                else:
+                    raise ValueError("当前时段索引超出范围, 请检查put_off矩阵和时段定义")
                 
                 if delayed_est + proc_time <= period_end_time:
                     actual_start_time = delayed_est
