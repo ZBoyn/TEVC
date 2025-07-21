@@ -152,3 +152,21 @@ class BFO_Operators:
                 migrated_offspring.append(population[i].copy())
         
         return migrated_offspring
+    
+class LocalSearch_Operators:
+    """
+    本地搜索算子 用于在当前解附近进行局部优化
+    1. 优势代理
+    2. 右移优化
+    """
+    def __init__(self, problem_def: ProblemDefinition, decoder):
+        self.problem = problem_def
+        self.decoder = decoder
+
+    def prefer_agent(self, parent_solution: Solution) -> Solution:
+        # TODO: 在这里实现优势代理的序列调整逻辑
+        return parent_solution.copy()
+
+    def right_shift(self, parent_solution: Solution) -> Solution:
+        # TODO: 在这里实现右移策略，生成新的put_off矩阵
+        return parent_solution.copy()
