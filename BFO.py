@@ -129,12 +129,12 @@ class BFO:
         # 在我们的最小化问题中, Health值越小, 代表个体越“健康”（历史表现越好）
         sorted_indices = np.argsort(self.health) # [最优个体的索引, 次优个体索引, ..., 最差个体索引]
         
-        # 取一半个题进行淘汰和复制
+        # 取一半个体进行淘汰和复制
         num_to_replace = self.popsize // 2
         best_indices = sorted_indices[:num_to_replace]  # 取健康度最小, 即最优的一半: 前一半
         worst_indices = sorted_indices[num_to_replace:]
         
-        # 用最优的一半个题替换最差的一半
+        # 用最优的一半个体替换最差的一半
         for i in range(num_to_replace):
             best_idx = best_indices[i]
             worst_idx = worst_indices[i]

@@ -1,5 +1,5 @@
 import numpy as np
-from config import ProblemDefinition, Solution # 假设您已将之前的类放入config.py
+from config import ProblemDefinition, Solution
 
 class Decoder:
     """
@@ -80,4 +80,4 @@ class Decoder:
         tcta = np.sum(agent_makespans * self.problem.agent_weights)
         
         solution.objectives = np.array([tec, tcta])
-        return solution.objectives, completion_times, operation_periods
+        return solution.objectives
