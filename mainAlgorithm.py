@@ -11,11 +11,12 @@ class EvolutionaryAlgorithm:
     算法主框架
     以NSGA-II为骨架 集成BFO和问题特有的局部搜索算子
     """
-    def __init__(self, problem_def: ProblemDefinition, pop_size: int, max_generations: int, bfo_params: dict):
+    def __init__(self, problem_def: ProblemDefinition, pop_size: int, max_generations: int, bfo_params: dict, init_params: dict):
         self.problem = problem_def
         self.pop_size = pop_size
         self.max_generations = max_generations
         
+        self.init_params = init_params
         self.initializer = Initializer(self.problem, self.pop_size)
         self.decoder = Decoder(self.problem)
 
@@ -30,8 +31,11 @@ class EvolutionaryAlgorithm:
         """执行完整的多目标进化算法流程"""
         # 初始化
         # 生成初始种群 (sequence + 全0的put_off矩阵)
-        self.population = self.initializer.initialize_population(h1_count=1, h2_count=1, mutation_swaps=30)
-        
+        h1_count = self.init_params.get('h1_count', 1) # 默认使用Heuristic 1
+        h2_count = self.init_params.get('h2_count', 1) # 默认使用Heuristic 2
+        mutation_swaps = self.init_params.get('mutation_swaps', 30) # 默认进行30次交换
+        self.population = self.initializer.initialize_population(h1_count=h1_count, h2_count=h2_count, mutation_swaps=mutation_swaps)
+
         # 评估初始种群
         for sol in self.population:
             self.decoder.decode(sol)
