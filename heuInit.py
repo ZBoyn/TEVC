@@ -4,10 +4,11 @@ from typing import List
 
 class Initializer:
     """根据不同策略初始化解的种群"""
-    def __init__(self, problem_definition: ProblemDefinition, pop_size: int):
+    def __init__(self, problem_definition: ProblemDefinition, pop_size: int, init_params: dict):
         self.problem = problem_definition
         self.pop_size = pop_size
-        
+        self.params = init_params
+
         self.problem.agent_priority = self._calculate_agent_priorities()
     
     def _calculate_agent_priorities(self) -> List[int]:
