@@ -164,8 +164,43 @@ class LocalSearch_Operators:
         self.decoder = decoder
 
     def prefer_agent(self, parent_solution: Solution) -> Solution:
-        # TODO: 在这里实现优势代理的序列调整逻辑
-        return parent_solution.copy()
+        """优势代理局部搜索算子
+
+        Args:
+            parent_solution (Solution): 父代解
+
+        Returns:
+            Solution: 经过优势代理优化后的解
+        """
+        child_solution = parent_solution.copy()
+        sequence = child_solution.sequence
+        
+        highest_priority_agent_id = self.problem.agent_priority[0]
+    
+        left, right = 0, self.problem.num_jobs - 1
+        while left < right:
+            # 从右向左, 找到第一个属于最高优先级代理的工件
+            is_right_job_dominant = (self.problem.job_to_agent_map.get(sequence[right]) == highest_priority_agent_id)
+            if not is_right_job_dominant:
+                right -= 1
+                continue
+            # 从左向右, 找到第一个不属于最高优先级代理的工件
+            is_left_job_dominant = (self.problem.job_to_agent_map.get(sequence[left]) == highest_priority_agent_id)
+            if is_left_job_dominant:
+                left += 1
+                continue
+            
+            # 如果左右指针都找到了目标且还未相遇, 则交换
+            if left < right:
+                sequence[left], sequence[right] = sequence[right], sequence[left]
+                left += 1
+                right -= 1
+                
+        child_solution.sequence = sequence
+        
+        child_solution.put_off = np.zeros_like(parent_solution.put_off)
+        
+        return child_solution
 
     def right_shift(self, parent_solution: Solution) -> Solution:
         # TODO: 在这里实现右移策略，生成新的put_off矩阵
