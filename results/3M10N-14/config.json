@@ -1,30 +1,35 @@
 {
-    "POP_SIZE": 50,
-    "MAX_GENERATIONS": 500,
+    "DATA_FILE_PATH": "data2/3M10N-14.txt",
     "PLOT_PARAMS": {
         "plot_frequency": 10,
         "output_folder": "results\\3M10N-14"
+    },
+    "POP_SIZE": 50,
+    "MAX_GENERATIONS": 500,
+    "INIT_PARAMS": {
+        "h1_count": 1,
+        "h2_count": 1,
+        "mutation_swaps": 30,
+        "agent_tca_estimation_samples": 10,
+        "random_init_ratio": 0.3333333333333333
     },
     "BFO_PARAMS": {
         "Mmax": 10,
         "C_initial": 0.1,
         "C_final": 0.01,
         "put_off_mutation_prob": 0.5,
-        "put_off_mutation_strength": 5
-    },
-    "INIT_PARAMS": {
-        "h1_count": 1,
-        "h2_count": 1,
-        "mutation_swaps": 30
+        "put_off_mutation_strength": 5,
+        "put_off_regression_prob": 0.7,
+        "migration_tec_weight": 0.5,
+        "migration_tcta_weight": 0.5
     },
     "PROB_PARAMS": {
         "prob_crossover": 0.3,
         "prob_chemotaxis": 0.3,
         "prob_prefer_agent": 0.2,
         "prob_right_shift": 0.2,
-        "prob_migration": 0.1,
         "polishing_phase_gens": 30,
         "destroy_rebuild_alpha": 0.5
     },
-    "elapsed_time_seconds": 70.38175654411316
+    "elapsed_time_seconds": 87.31875491142273
 }

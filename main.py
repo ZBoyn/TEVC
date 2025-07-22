@@ -1,62 +1,31 @@
-from config import ProblemDefinition, Solution
-from data_loader import load_problem_from_file
+from pro_def import ProblemDefinition, Solution
 from data_loader_new import load_problem_g_format
 from main_algorithm import EvolutionaryAlgorithm
 from results_handler import save_and_plot_results
+from parameters import CONFIG
 import os
 import time
 
 def main():
-    DATA_FILE_PATH = "data2\\3M10N-14.txt"
     
-    config = {
-        'POP_SIZE': 50,
-        'MAX_GENERATIONS': 500,
-        'PLOT_PARAMS': {
-            'plot_frequency': 10
-        },
-        'BFO_PARAMS': {
-            'Mmax': 10,
-            'C_initial': 0.1,
-            'C_final': 0.01,
-            'put_off_mutation_prob': 0.5,
-            'put_off_mutation_strength': 5
-        },
-        'INIT_PARAMS': {
-            'h1_count': 1,
-            'h2_count': 1,
-            'mutation_swaps': 30
-        },
-        'PROB_PARAMS': {
-            'prob_crossover': 0.3,
-            'prob_chemotaxis': 0.3,
-            'prob_prefer_agent': 0.2,
-            'prob_right_shift': 0.2,
-            'prob_migration': 0.1,
-            'polishing_phase_gens': 30,
-            'destroy_rebuild_alpha': 0.5
-        }
-    }
+    # 从中央配置获取数据文件路径
+    data_file_path = CONFIG['DATA_FILE_PATH']
     
     try:
-        problem_def = load_problem_g_format(DATA_FILE_PATH)
+        problem_def = load_problem_g_format(data_file_path)
     except FileNotFoundError:
-        print(f"错误: 数据文件未找到, 请检查路径: {DATA_FILE_PATH}")
+        print(f"错误: 数据文件未找到, 请检查路径: {data_file_path}")
         return
     
-    problem_name = os.path.splitext(os.path.basename(DATA_FILE_PATH))[0]
+    # 动态设置输出文件夹
+    problem_name = os.path.splitext(os.path.basename(data_file_path))[0]
     output_folder = os.path.join("results", problem_name)
-    
-    config['PLOT_PARAMS']['output_folder'] = output_folder
+    CONFIG['PLOT_PARAMS']['output_folder'] = output_folder
 
+    # 将整个配置字典传递给算法
     algorithm = EvolutionaryAlgorithm(
         problem_def=problem_def,
-        pop_size=config['POP_SIZE'],
-        max_generations=config['MAX_GENERATIONS'],
-        bfo_params=config['BFO_PARAMS'],
-        init_params=config['INIT_PARAMS'],
-        prob_params=config['PROB_PARAMS'],
-        plot_params=config['PLOT_PARAMS']
+        config=CONFIG
     )
     
     start_time = time.time()
@@ -66,9 +35,9 @@ def main():
     elapsed_time = end_time - start_time
     print(f"\n算法总执行时间: {elapsed_time:.2f} 秒")
     
-    config['elapsed_time_seconds'] = elapsed_time
+    CONFIG['elapsed_time_seconds'] = elapsed_time
 
-    save_and_plot_results(final_population, problem_def, output_folder, config)
+    save_and_plot_results(final_population, problem_def, output_folder, CONFIG)
     
 if __name__ == "__main__":
     main()

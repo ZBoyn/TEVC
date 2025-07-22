@@ -1,5 +1,5 @@
 import numpy as np
-from config import ProblemDefinition
+from pro_def import ProblemDefinition
 import re
 import os
 

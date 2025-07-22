@@ -1,13 +1,13 @@
 import numpy as np
-from config import ProblemDefinition, Solution
+from pro_def import ProblemDefinition, Solution
 from typing import List
 
 class Initializer:
     """根据不同策略初始化解的种群"""
-    def __init__(self, problem_definition: ProblemDefinition, pop_size: int):
+    def __init__(self, problem_definition: ProblemDefinition, pop_size: int, init_params: dict):
         self.problem = problem_definition
         self.pop_size = pop_size
-
+        self.params = init_params
         self.problem.agent_priority = self._calculate_agent_priorities()
     
     def _calculate_agent_priorities(self) -> List[int]:
@@ -25,7 +25,8 @@ class Initializer:
             agent_jobs = list(range(start_job, end_job))
             
             # 估算当前单个代理的TCA
-            estimated_tca = self._estimate_agent_tca(agent_jobs, num_samples=10)
+            num_samples = self.params.get('agent_tca_estimation_samples', 10)
+            estimated_tca = self._estimate_agent_tca(agent_jobs, num_samples=num_samples)
             
             weight = self.problem.agent_weights[agent_idx]
             agent_weighted_times.append((estimated_tca * weight, agent_idx))
@@ -162,17 +163,17 @@ class Initializer:
         sequence = np.random.permutation(self.problem.num_jobs)
         return Solution(sequence=sequence, put_off=np.zeros_like(self.problem.processing_times))
 
-    def initialize_population(self, h1_count=1, h2_count=1, mutation_swaps=30) -> List[Solution]:
+    def initialize_population(self) -> List[Solution]:
         """初始化种群
-
-        Args:
-            h1_count (int, optional): 使用启发式1生成的个体数量. Defaults to 1.
-            h2_count (int, optional): 使用启发式2生成的个体数量. Defaults to 1.
-            mutation_swaps (int, optional): 随机交换的次数. Defaults to 30.
-
+        
         Returns:
             List[Solution]: 初始化后的种群
         """
+        h1_count = self.params.get('h1_count', 1)
+        h2_count = self.params.get('h2_count', 1)
+        mutation_swaps = self.params.get('mutation_swaps', 30)
+        random_init_ratio = self.params.get('random_init_ratio', 1/3)
+
         print("初始化种群...")
         if h1_count + h2_count > self.pop_size:
             raise ValueError("启发式个体总数不能超过种群大小。")
@@ -195,7 +196,7 @@ class Initializer:
         current_pop_size = len(population)
         # 循环生成剩余的个体
         for p in range(current_pop_size, self.pop_size):
-            if p % 3 != 2:
+            if p % int(1/random_init_ratio) != (int(1/random_init_ratio) -1) :
                 if elites: # 确保精英池不为空
                     # 对其序列进行多次交换操作
                     template_solution = elites[np.random.randint(0, len(elites))].copy()
@@ -207,10 +208,8 @@ class Initializer:
                     population.append(template_solution)
                 else: # 如果没有精英，则退化为随机生成
                     population.append(self.generate_randomly())
-                template_solution = elites[np.random.randint(0, 2)].copy()
-
             else:
-                # 每3个个体生成一个随机个体
+                # 按比例生成随机个体
                 population.append(self.generate_randomly())
             
         print("种群初始化完成 共计:", len(population), "个体")

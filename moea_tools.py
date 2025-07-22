@@ -1,6 +1,6 @@
 import numpy as np
 from typing import List
-from config import Solution
+from pro_def import Solution
 
 def non_dominated_sort(population: List[Solution]) -> List[List[Solution]]:
     """

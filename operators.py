@@ -1,5 +1,5 @@
 import numpy as np
-from config import ProblemDefinition, Solution
+from pro_def import ProblemDefinition, Solution
 from moea_tools import is_dominated
 from typing import List
 
@@ -27,7 +27,8 @@ class BFO_Operators:
         """
         m_max = self.params.get('Mmax', 10)
         put_off_mutation_prob = self.params.get('put_off_mutation_prob', 0.1)
-        put_off_mutation_strength = self.params.get('put_off_mutation_strength', 1) # 每次变异的元素数量
+        put_off_mutation_strength = self.params.get('put_off_mutation_strength', 1)
+        put_off_regression_prob = self.params.get('put_off_regression_prob', 0.7)
 
         current_sol = parent_solution.copy()
         
@@ -52,17 +53,17 @@ class BFO_Operators:
                     job_idx = np.random.randint(self.problem.num_jobs)
                     machine_idx = np.random.randint(self.problem.num_machines)
                     
-                    if new_put_off[job_idx, machine_idx] > 0 and np.random.rand() < 0.7: # 70%概率向0回归
+                    if new_put_off[job_idx, machine_idx] > 0 and np.random.rand() < put_off_regression_prob:
                         new_put_off[job_idx, machine_idx] -= 1
                     else:
                         new_put_off[job_idx, machine_idx] += 1
                         
-            # 1c. 构造并评估候选解 (final_schedule=None, put_off=0)
-            trial_sol = Solution(sequence=new_sequence, put_off=np.zeros_like(original_sol.put_off), final_schedule=None)
+            # 构造并评估候选解 (final_schedule=None), 激活put_off
+            trial_sol = Solution(sequence=new_sequence, put_off=new_put_off, final_schedule=None)
             self.decoder.decode(trial_sol)
 
             # 2. 基于Pareto支配关系决定是否接受移动
-            if is_dominated(trial_sol, current_sol):
+            if not is_dominated(current_sol, trial_sol):
                 # 如果新解支配当前解, 则接受新解
                 current_sol = trial_sol
             else:
@@ -141,7 +142,9 @@ class BFO_Operators:
         norm_tec = (tec_values - tec_values.min()) / tec_range
         norm_tcta = (tcta_values - tcta_values.min()) / tcta_range
         
-        mc = 0.5 * norm_tec + 0.5 * norm_tcta
+        tec_weight = self.params.get('migration_tec_weight', 0.5)
+        tcta_weight = self.params.get('migration_tcta_weight', 0.5)
+        mc = tec_weight * norm_tec + tcta_weight * norm_tcta
         
         # 遍历种群 根据概率决定哪些个体需要迁徙
         for i, sol in enumerate(population):

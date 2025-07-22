@@ -1,7 +1,7 @@
 import pandas as pd
 import matplotlib.pyplot as plt
 from typing import List
-from config import Solution, ProblemDefinition
+from pro_def import Solution, ProblemDefinition
 import os
 import numpy as np
 import json

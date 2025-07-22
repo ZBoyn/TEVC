@@ -1,4 +1,4 @@
-from config import ProblemDefinition, Solution
+from pro_def import ProblemDefinition, Solution
 from heu_init import Initializer
 import numpy as np
 from decode import Decoder
@@ -14,34 +14,35 @@ class EvolutionaryAlgorithm:
     算法主框架
     以NSGA-II为骨架 集成BFO和问题特有的局部搜索算子
     """
-    def __init__(self, problem_def: ProblemDefinition, pop_size: int, max_generations: int, bfo_params: dict, init_params: dict, prob_params: dict, plot_params: dict = None):
+    def __init__(self, problem_def: ProblemDefinition, config: dict):
         self.problem = problem_def
-        self.pop_size = pop_size
-        self.max_generations = max_generations
+        self.config = config
         
-        self.init_params = init_params
-        self.prob_params = prob_params
-        self.plot_params = plot_params
-        self.initializer = Initializer(self.problem, self.pop_size)
+        # 从配置中解析参数
+        self.pop_size = self.config['POP_SIZE']
+        self.max_generations = self.config['MAX_GENERATIONS']
+        
+        self.init_params = self.config['INIT_PARAMS']
+        self.prob_params = self.config['PROB_PARAMS']
+        self.plot_params = self.config.get('PLOT_PARAMS') # 使用 .get 以防没有绘图参数
+        
+        self.initializer = Initializer(self.problem, self.pop_size, self.init_params)
         self.decoder = Decoder(self.problem)
 
         # 实例化工具箱
-        self.bfo_toolkit = BFO_Operators(self.problem, self.decoder, bfo_params)
+        self.bfo_toolkit = BFO_Operators(self.problem, self.decoder, self.config['BFO_PARAMS'])
         self.ls_toolkit = LocalSearch_Operators(self.problem, self.decoder)
 
         self.population: List[Solution] = []
         self.archive: List[Solution] = []
-        self.polishing_phase_start_gen: int = max_generations - self.prob_params.get('polishing_phase_gens', 5)   # 执行NEH+RightShift的精修阶段
+        self.polishing_phase_start_gen: int = self.max_generations - self.prob_params.get('polishing_phase_gens', 5)   # 执行NEH+RightShift的精修阶段
 
 
     def run(self):
         """执行完整的多目标进化算法流程"""
         # 初始化
         # 生成初始种群 (sequence + 全0的put_off矩阵)
-        h1_count = self.init_params.get('h1_count', 1)
-        h2_count = self.init_params.get('h2_count', 1)
-        mutation_swaps = self.init_params.get('mutation_swaps', 30)
-        self.population = self.initializer.initialize_population(h1_count=h1_count, h2_count=h2_count, mutation_swaps=mutation_swaps)
+        self.population = self.initializer.initialize_population()
 
         # 评估初始种群
         for sol in self.population:

@@ -1,5 +1,5 @@
 import numpy as np
-from config import ProblemDefinition, Solution
+from pro_def import ProblemDefinition, Solution
 
 class Decoder:
     """
