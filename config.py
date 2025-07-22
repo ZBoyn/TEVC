@@ -65,16 +65,15 @@ class Solution:
     sequence: np.ndarray
     put_off: np.ndarray
     
-    # final_schedule可以直接存储一个(开始时间, 完成时间)的元组矩阵, 由right_shift算子生成
-    final_schedule: np.ndarray = None 
-    completion_times: np.ndarray = None # 用于缓存解码后的完成时间, 以便结果分析
+    final_schedule: np.ndarray = None # 由right_shift算子生成
+    completion_times: np.ndarray = None # 用于缓存解码后的完成时间
     
     objectives: np.ndarray = field(default_factory=lambda: np.full(2, np.inf)) # [TEC, TCTA]
     rank: int = -1
     crowding_distance: float = 0.0
     
     def copy(self):
-        """创建解的一个深拷贝。"""
+        """创建解的一个深拷贝"""
         return Solution(sequence=self.sequence.copy(),
                         put_off=self.put_off.copy(),
                         final_schedule=self.final_schedule.copy() if self.final_schedule is not None else None,

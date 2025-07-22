@@ -3,14 +3,14 @@ from config import ProblemDefinition, Solution
 
 class Decoder:
     """
-    解码器类，用于将工件序列解码为目标值。
+    解码器类, 用于将工件序列解码为目标值
     """
     def __init__(self, problem_def: ProblemDefinition):
         self.problem = problem_def
 
-    def decode(self, solution: Solution, return_est_matrix: bool = False):
+    def decode(self, solution: Solution):
         """
-        解码函数: 根据解的状态(有无final_schedule)计算目标函数值.
+        解码函数: 根据解的状态(有无final_schedule)计算目标函数值
         """
         completion_times = None
         
@@ -18,10 +18,12 @@ class Decoder:
         if solution.final_schedule is not None:
             completion_times = solution.final_schedule
         
-        # 路径2: 解是一个标准的、基于序列的紧凑调度 (put_off被忽略)
+        # 路径2: 解是一个基于序列和put_off的调度
         else:
-            # 动态计算紧凑排程的完成时间
+            # 动态计算紧凑排程的完成时间, 并应用put_off
+            solution.put_off = np.round(solution.put_off).astype(int)
             temp_completion_times = np.zeros((self.problem.num_jobs, self.problem.num_machines))
+            
             for j_idx, job_id in enumerate(solution.sequence):
                 for i in range(self.problem.num_machines):
                     proc_time = self.problem.processing_times[job_id, i]
@@ -31,16 +33,29 @@ class Decoder:
                     est_from_prev_machine = temp_completion_times[job_id, i - 1] if i > 0 else 0
                     est = max(est_from_prev_job, est_from_prev_machine, self.problem.release_times[job_id])
                     
-                    # 紧凑排程的核心: 处理非抢占约束
-                    p_idx = np.searchsorted(self.problem.period_start_times, est, side='right') - 1
-                    p_idx = max(0, p_idx) # 确保 p_idx 不会是-1
+                    # 应用时段推迟put_off
+                    base_period_idx = np.searchsorted(self.problem.period_start_times, est, side='right') - 1
+                    target_period_idx = min(base_period_idx + solution.put_off[job_id, i], self.problem.num_periods - 1)
+                    target_period_start_time = self.problem.period_start_times[target_period_idx]
+                    delayed_est = max(target_period_start_time, est)
+
+                    # 应用电价时段内的紧凑排列约束
+                    p_idx = np.searchsorted(self.problem.period_start_times, delayed_est, side='right') - 1
+                    p_idx = max(0, p_idx)
+                    
                     if p_idx + 1 < len(self.problem.period_start_times):
                         p_end_time = self.problem.period_start_times[p_idx + 1]
                     else:
                         p_end_time = self.problem.deadline
                     
-                    start_time = est if est + proc_time <= p_end_time else p_end_time
-                    temp_completion_times[job_id, i] = start_time + proc_time
+                    actual_start_time = delayed_est
+                    if delayed_est + proc_time > p_end_time:
+                         if p_idx + 1 < len(self.problem.period_start_times):
+                             actual_start_time = self.problem.period_start_times[p_idx + 1]
+                         else: # 已是最后一个时段, 允许溢出, 后续会被惩罚
+                             actual_start_time = delayed_est
+
+                    temp_completion_times[job_id, i] = actual_start_time + proc_time
             completion_times = temp_completion_times
 
         # 应用惩罚
@@ -71,15 +86,6 @@ class Decoder:
         solution.objectives = np.array([tec, tcta])
         solution.completion_times = completion_times # 缓存完成时间
         
-        # 兼容right_shift算子获取紧凑排程的est的需求
-        if return_est_matrix:
-            # EST矩阵的计算逻辑与紧凑排程一致, 只是记录的是start_time
-            est_matrix = np.zeros_like(completion_times)
-            # (为简化, 此处省略了est_matrix的完整计算, 因为它只在right_shift内部的特定调用中需要,
-            # 而right_shift本身现在是自洽的, 不再需要从外部获取est_matrix)
-            # 实际上, right_shift内部的 _calculate_earliest_times 已经满足了需求.
-            return solution.objectives, est_matrix
-
         return solution.objectives
     
     def calculate_op_cost(self, start_time: float, proc_time: float) -> float:

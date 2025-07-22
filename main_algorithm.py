@@ -21,7 +21,7 @@ class EvolutionaryAlgorithm:
         
         self.init_params = init_params
         self.prob_params = prob_params
-        self.plot_params = plot_params if plot_params is not None else {}
+        self.plot_params = plot_params
         self.initializer = Initializer(self.problem, self.pop_size)
         self.decoder = Decoder(self.problem)
 
@@ -56,7 +56,32 @@ class EvolutionaryAlgorithm:
             
             # 判断是否进入精修阶段
             if gen >= self.polishing_phase_start_gen:
-                self._polish_population()
+                # 精修阶段: 对当前种群中的每个个体应用强大的局部搜索算子
+                polished_offspring = []
+                alpha = self.prob_params.get('destroy_rebuild_alpha', 0.5)
+                
+                print(f"精修阶段: 对 {len(self.population)} 个个体应用 Destroy & Rebuild + Right Shift (alpha={alpha})...")
+                for i, parent_sol in enumerate(self.population):
+                    neh_optimized_sol = self.ls_toolkit.destroy_rebuild(parent_sol, alpha)
+                    final_sol = self.ls_toolkit.right_shift(neh_optimized_sol)
+                    polished_offspring.append(final_sol)
+
+                # 用精修后的解更新外部存档
+                self._update_archive(polished_offspring)
+
+                # 合并父代与子代种群
+                combined_population = self.population + polished_offspring
+                
+                # 去重
+                deduplicated_population = self._remove_duplicates(combined_population)
+                
+                print(f"合并与去重: {len(combined_population)} -> {len(deduplicated_population)} 个独特解")
+
+                # NSGA-II 精英选择
+                fronts = non_dominated_sort(deduplicated_population)
+                self.population = self._selection(fronts)
+                
+                print(f"精英选择完成, 新种群大小: {len(self.population)}")
                 print("-" * 50)
             else:
                 offspring_population = self._generate_offspring(gen)
@@ -78,7 +103,7 @@ class EvolutionaryAlgorithm:
                 fronts = non_dominated_sort(unique_population)
                 self.population = self._selection(fronts)
 
-            # 定期绘制和保存帕累托前沿图 (现在对所有代都生效)
+            # 定期绘制和保存帕累托前沿图
             if self.plot_params and self.plot_params.get('plot_frequency', 0) > 0 and (gen + 1) % self.plot_params['plot_frequency'] == 0:
                 output_folder = self.plot_params.get('output_folder', 'results/temp')
                 plot_intermediate_front(self.archive, gen + 1, output_folder)
@@ -121,19 +146,30 @@ class EvolutionaryAlgorithm:
     def _remove_duplicates(self, population: List[Solution]) -> List[Solution]:
         """
         移除种群中的重复解.
-        通过将 sequence 和 put_off 矩阵转换为可哈希的元组来实现.
+        一个解的唯一标识(基因型)由它的 `final_schedule` (如果存在) 或 `sequence` 和 `put_off` 组合决定.
         """
         unique_solutions = []
         seen_signatures = set()
 
         for sol in population:
-            # 确保 sequence 和 put_off 存在
-            if sol.sequence is None or sol.put_off is None:
-                continue
-
-            sequence_tuple = tuple(sol.sequence)
-            put_off_tuple = tuple(map(tuple, sol.put_off))
-            signature = (sequence_tuple, put_off_tuple)
+            signature = None
+            if sol.final_schedule is not None:
+                # 如果一个解有精确的调度(final_schedule), 那么这个调度就是它的唯一标识
+                # sequence 和 put_off 此时可以被认为是"历史遗留"的生成信息
+                try:
+                    signature = tuple(map(tuple, sol.final_schedule))
+                except TypeError:
+                    continue
+            else:
+                # 如果没有精确调度, 则解由其基本编码(sequence, put_off)定义
+                if sol.sequence is None: # sequence 是必须的
+                    continue
+                
+                sequence_tuple = tuple(sol.sequence)
+                # 即使 put_off 通常为0, 也将其包含在签名中以保持一致性
+                put_off_tuple = tuple(map(tuple, sol.put_off)) if sol.put_off is not None else tuple()
+                
+                signature = (sequence_tuple, put_off_tuple)
             
             if signature not in seen_signatures:
                 seen_signatures.add(signature)
@@ -212,60 +248,6 @@ class EvolutionaryAlgorithm:
         final_offspring = self.bfo_toolkit.migration(temp_offspring)
         
         return final_offspring
-
-    def _polish_population(self):
-        """
-        精修阶段: 对当前种群中的每个个体应用强大的局部搜索算子,
-        然后与父代合并, 去重, 并通过精英选择产生新一代种群.
-        同时更新外部存档.
-        """
-        # 1. 对当前种群中的每个个体应用强大的局部搜索算子
-        polished_offspring = []
-        alpha = self.prob_params.get('destroy_rebuild_alpha', 0.5)
-        
-        print(f"精修阶段: 对 {len(self.population)} 个个体应用 Destroy & Rebuild + Right Shift (alpha={alpha})...")
-        for i, parent_sol in enumerate(self.population):
-            # 注意: ls_toolkit中的算子已经包含了对解的评估(decode)
-            neh_optimized_sol = self.ls_toolkit.destroy_rebuild(parent_sol, alpha)
-            final_sol = self.ls_toolkit.right_shift(neh_optimized_sol)
-            polished_offspring.append(final_sol)
-
-        # 2. 用精修后的解更新外部存档
-        self._update_archive(polished_offspring)
-
-        # 3. 合并父代与子代种群
-        combined_population = self.population + polished_offspring
-        
-        # 4. 去重 (基于目标函数值)
-        unique_solutions = {}
-        for sol in combined_population:
-            # 将目标值元组作为字典的键, 以实现去重
-            objectives_tuple = tuple(sol.objectives)
-            if objectives_tuple not in unique_solutions:
-                unique_solutions[objectives_tuple] = sol
-        
-        deduplicated_population = list(unique_solutions.values())
-        
-        print(f"合并与去重: {len(combined_population)} -> {len(deduplicated_population)} 个独特解")
-
-        # 5. NSGA-II 精英选择
-        fronts = non_dominated_sort(deduplicated_population)
-        next_population = []
-        for front in fronts:
-            if len(next_population) + len(front) <= self.pop_size:
-                next_population.extend(front)
-            else:
-                # 如果整个前沿无法放入, 则根据拥挤度选择
-                remaining_space = self.pop_size - len(next_population)
-                crowding_distance_assignment(front)
-                front.sort(key=lambda x: x.crowding_distance, reverse=True)
-                next_population.extend(front[:remaining_space])
-                break
-        
-        # 将精修和选择后的最优个体更新为当前种群
-        self.population = next_population
-        print(f"精英选择完成, 新种群大小: {len(self.population)}")
-            
 
     def _selection(self, fronts: List[List[Solution]]) -> List[Solution]:
         """执行NSGA-II的选择操作, 填充下一代种群

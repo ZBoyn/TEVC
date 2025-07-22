@@ -28,12 +28,13 @@ def test_decoder():
     solution1 = Solution(sequence=seq1, put_off=put_off1)
 
     objectives1, completion_times1, operation_periods1 = decoder.decode(solution1)
+    # objectives1 = decoder.decode(solution1)
 
     print(f"  - 测试序列: {solution1.sequence}")
     print(f"  - 目标值 [TEC, TCTA]: {np.round(objectives1, 2)}")
     print(f"  - 完成时间矩阵:\n{completion_times1}")
     print(f"  - 时段操作矩阵:\n{operation_periods1}")
-    print("Good 已验证 与手算结果一致")
+    print("Good 已验证 与手算结果一致")  # [95.  31.4]
         
     # 测试场景2: 时段推迟生效
     print("\n--- 场景2: '时段推迟' (put_off生效) ---")
@@ -43,13 +44,14 @@ def test_decoder():
     solution2 = Solution(sequence=seq2, put_off=put_off2)
 
     objectives2, completion_times2, operation_periods2 = decoder.decode(solution2)
+    # objectives2 = decoder.decode(solution2)
 
     print(f"  - 测试序列: {solution2.sequence}")
     print(f"  - Put-off[2, 0] = 1")
     print(f"  - 目标值 [TEC, TCTA]: {np.round(objectives2, 2)}")
     print(f"  - 完成时间矩阵:\n{completion_times2}")
     print(f"  - 时段操作矩阵:\n{operation_periods2}")
-    print("Good 已验证 与手算结果一致")
+    print("Good 已验证 与手算结果一致")  # [126.   38.4]
     
     # 测试场景3: 跨时段约束生效
     print("\n--- 场景3: “禁止跨时段”约束生效 ---")
@@ -58,12 +60,13 @@ def test_decoder():
     solution3 = Solution(sequence=seq3, put_off=put_off3)
 
     objectives3, completion_times3, operation_periods3 = decoder.decode(solution3)
+    # objectives3 = decoder.decode(solution3)
 
     print(f"  - 测试序列: {solution3.sequence}")
     print(f"  - 目标值 [TEC, TCTA]: {np.round(objectives3, 2)}")
     print(f"  - 完成时间矩阵:\n{completion_times3}")
     print(f"  - 时段操作矩阵:\n{operation_periods3}")
-    print("Good 已验证 与手算结果一致")    
+    print("Good 已验证 与手算结果一致")  # [108.  25.]
 
 if __name__ == '__main__':
     test_decoder()
