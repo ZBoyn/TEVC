@@ -71,17 +71,18 @@ def plot_comparison(instance_base_name: str):
         os.makedirs(output_dir)
     
     output_filename = os.path.join(output_dir, f'comparison_{instance_base_name}.png')
-    plt.savefig(output_filename, dpi=300, bbox_inches='tight')
+    # plt.savefig(output_filename, dpi=300, bbox_inches='tight')
     
     plt.show()
 
 
 if __name__ == '__main__':
 
-    instances = ['3M7-1', '3M7-2', '3M7-3','3M7-4','3M7-5',
-                 '3M8-1', '3M8-2', '3M8-3','3M8-4','3M8-5',
-                 '3M9-1', '3M9-2', '3M9-3','3M9-4','3M9-5',
-                 '3M10-5', '3M10-11', '3M10-12','3M10-13','3M10-14']
+    # instances = ['3M7-1', '3M7-2', '3M7-3','3M7-4','3M7-5',
+    #              '3M8-1', '3M8-2', '3M8-3','3M8-4','3M8-5',
+    #              '3M9-1', '3M9-2', '3M9-3','3M9-4','3M9-5',
+    #              '3M10-5', '3M10-11', '3M10-12','3M10-13','3M10-14']
                  
+    instances = ['3M7-3']
     for instance in instances:
         plot_comparison(instance)

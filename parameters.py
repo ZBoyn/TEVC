@@ -1,6 +1,6 @@
 CONFIG = {
-    # 'DATA_FILE_PATH': "data2/3M10N-14.txt",  # 数据文件路径
-    'DATA_FILE_PATH': "dataset/data_A3_J400_M4_1.txt",
+    'DATA_FILE_PATH': "data2/3M7N-3.txt",  # 数据文件路径
+    # 'DATA_FILE_PATH': "dataset/data_A3_J400_M4_1.txt",
     'PLOT_PARAMS': {
         'plot_frequency': 10, # 绘图频率
     },
@@ -32,5 +32,7 @@ CONFIG = {
         'prob_right_shift': 0.2, # 右移概率
         'polishing_phase_gens': 30, # 精修阶段代数
         'destroy_rebuild_alpha': 0.5, # 破坏重建比例
+        'prob_polish': 0.4, # 在精修阶段应用强力局部搜索的概率
+        'prob_mutation': 0.2, # 常规进化中应用变异算子的概率
     }
 }

@@ -57,52 +57,45 @@ class EvolutionaryAlgorithm:
             
             # 判断是否进入精修阶段
             if gen >= self.polishing_phase_start_gen:
-                # 精修阶段: 对当前种群中的每个个体应用强大的局部搜索算子
+                # 精修阶段: 概率性地对种群中的个体应用强大的局部搜索算子
                 polished_offspring = []
                 alpha = self.prob_params.get('destroy_rebuild_alpha', 0.5)
+                prob_polish = self.prob_params.get('prob_polish', 0.4)
                 
-                print(f"精修阶段: 对 {len(self.population)} 个个体应用 Destroy & Rebuild + Right Shift (alpha={alpha})...")
-                for i, parent_sol in enumerate(self.population):
-                    neh_optimized_sol = self.ls_toolkit.destroy_rebuild(parent_sol, alpha)
-                    final_sol = self.ls_toolkit.right_shift(neh_optimized_sol)
-                    polished_offspring.append(final_sol)
+                print(f"精修阶段: 以 {prob_polish*100}% 的概率对个体应用 Destroy & Rebuild + Right Shift...")
+                
+                for parent_sol in self.population:
+                    if np.random.rand() < prob_polish:
+                        # 应用强力优化算子组合
+                        neh_optimized_sol = self.ls_toolkit.destroy_rebuild(parent_sol, alpha)
+                        final_sol = self.ls_toolkit.right_shift(neh_optimized_sol)
+                        polished_offspring.append(final_sol)
+                    else:
+                        # 未被选中的直接进入下一代
+                        polished_offspring.append(parent_sol.copy())
 
-                # 用精修后的解更新外部存档
+                # 用精修后的新解更新外部存档 (注意, polished_offspring中包含了未改变的个体)
                 self._update_archive(polished_offspring)
 
-                # 合并父代与子代种群
-                combined_population = self.population + polished_offspring
+                # 环境选择: 直接将精修/幸存的个体作为新种群
+                # 因为这里的目标是提纯, 而不是扩大搜索, 所以不与父代合并
+                self.population = remove_duplicates(polished_offspring)
                 
-                # 去重
-                deduplicated_population = remove_duplicates(combined_population)
-                
-                print(f"合并与去重: {len(combined_population)} -> {len(deduplicated_population)} 个独特解")
-
-                # NSGA-II 精英选择
-                fronts = non_dominated_sort(deduplicated_population)
-                self.population = selection(fronts, self.pop_size)
-                
-                print(f"精英选择完成, 新种群大小: {len(self.population)}")
+                print(f"精英提纯完成, 新种群大小: {len(self.population)}")
                 print("-" * 50)
             else:
+                # 常规进化阶段
                 offspring_population = self._generate_offspring(gen)
-
-                # 步骤B: 评估子代
-                for sol in offspring_population:
-                    self.decoder.decode(sol)
                 
-                # 步骤B.1: 更新外部存档
+                # 2. 更新外部存档
                 self._update_archive(offspring_population)
-
-                # 步骤C: 合并父代与子代
-                combined_population = self.population + offspring_population
                 
-                # 步骤C.1: 移除重复解
+                # 3. 环境选择 (合并父子代, 去重, NSGA-II选择)
+                combined_population = self.population + offspring_population
                 unique_population = remove_duplicates(combined_population)
-
-                # 步骤D: NSGA-II 环境选择
                 fronts = non_dominated_sort(unique_population)
                 self.population = selection(fronts, self.pop_size)
+
 
             # 定期绘制和保存帕累托前沿图
             if self.plot_params and self.plot_params.get('plot_frequency', 0) > 0 and (gen + 1) % self.plot_params['plot_frequency'] == 0:
@@ -144,73 +137,61 @@ class EvolutionaryAlgorithm:
         self.archive = list(phenotype_unique_solutions.values())
 
     def _generate_offspring(self, current_gen: int) -> List[Solution]:
-        """通过调用工具箱中的算子来生成子代
-           概率性地选择不同的算子
-           注意是两阶段的 第一阶段进行繁殖和改进 第二阶段注入多样性
-            
-        Args:
-            current_gen (int): 当前代数
-
-        Returns:
-            List[Solution]: 生成的子代种群
         """
-        # 动态步长计算
-        progress = current_gen / self.max_generations
+        通过标准的进化流程(交配池、交叉、变异)生成并评估子代种群
+        """
+        # 动态步长
+        progress = current_gen / self.max_generations if self.max_generations > 0 else 0
         bfo_params = self.bfo_toolkit.params
         c_initial = bfo_params.get('C_initial', 0.1)
         c_final = bfo_params.get('C_final', 0.01)
         current_step_size = c_initial - (c_initial - c_final) * progress
-
-        # 定义算子概率
-        prob_crossover = self.prob_params.get('prob_crossover', 0.4)
-        prob_chemotaxis = self.prob_params.get('prob_chemotaxis', 0.2)
-        prob_prefer_agent = self.prob_params.get('prob_prefer_agent', 0.2)
-        prob_right_shift = self.prob_params.get('prob_right_shift', 0.2)
         
-        temp_offspring = []
-        while len(temp_offspring) < self.pop_size:
-            
-            rand_num = np.random.rand()
-            
-            # 交叉操作 (生成两个子代)
-            if rand_num < prob_crossover:
-                p1 = tournament_selection(self.population)
-                p2 = tournament_selection(self.population)
-                child1, child2 = self.bfo_toolkit.reproduction_crossover(p1, p2)
-                temp_offspring.extend([child1, child2])
-            
-            # 趋向操作
-            elif rand_num < prob_crossover + prob_chemotaxis:
-                p1 = tournament_selection(self.population)
-                child = self.bfo_toolkit.chemotaxis(p1, current_step_size)
-                temp_offspring.append(child)
-            
-            # 优势代理优化 (TCTA偏向)
-            elif rand_num < prob_crossover + prob_chemotaxis + prob_prefer_agent:
-                parent = tournament_selection(self.population)
-                child = self.ls_toolkit.prefer_agent(parent)
-                temp_offspring.append(child)
+        # 算子概率
+        prob_crossover = self.prob_params.get('prob_crossover', 0.9)
+        prob_mutation = self.prob_params.get('prob_mutation', 0.2)
+        
+        # 定义好用的轻量级局部搜索/变异算子集合
+        mutation_operators = [
+            lambda sol: self.bfo_toolkit.chemotaxis(sol, current_step_size),
+            self.ls_toolkit.right_shift,
+            self.ls_toolkit.prefer_agent
+        ]
 
-            # 右移优化 (TEC偏向)
-            elif rand_num < prob_crossover + prob_chemotaxis + prob_prefer_agent + prob_right_shift:
-                parent = tournament_selection(self.population)
-                child = self.ls_toolkit.right_shift(parent)
-                temp_offspring.append(child)
-            
+        # 1. 选择: 创建交配池
+        mating_pool = [tournament_selection(self.population) for _ in range(self.pop_size)]
+        
+        # 2. 繁殖: 交叉与变异
+        offspring_from_reproduction = []
+        i = 0
+        while len(offspring_from_reproduction) < self.pop_size:
+            p1 = mating_pool[i]
+            # 确保有p2, 即使种群大小为奇数
+            p2 = mating_pool[i + 1] if i + 1 < self.pop_size else mating_pool[0]
+            i = (i + 2) % self.pop_size # 循环使用交配池
+
+            # 交叉
+            if np.random.rand() < prob_crossover:
+                c1, c2 = self.bfo_toolkit.reproduction_crossover(p1, p2)
             else:
-                p1 = tournament_selection(self.population)
-                child = self.bfo_toolkit.chemotaxis(p1, current_step_size)
-                temp_offspring.append(child)
+                c1, c2 = p1.copy(), p2.copy()
+            
+            # 变异
+            for child in [c1, c2]:
+                if np.random.rand() < prob_mutation:
+                    # 随机选择一个变异算子进行深度优化
+                    operator = np.random.choice(mutation_operators)
+                    mutated_child = operator(child)
+                    offspring_from_reproduction.append(mutated_child)
+                else:
+                    offspring_from_reproduction.append(child)
 
         # 确保种群大小精确
-        temp_offspring = temp_offspring[:self.pop_size]
-        
-        # 在生成后, 需要先对这个临时种群进行评估, 以便迁徙算子使用
-        for sol in temp_offspring:
-            self.decoder.decode(sol)
+        offspring_population = offspring_from_reproduction[:self.pop_size]
 
-        # 多样性注入
-        # 将整个临时子代种群送入种群级别的迁徙算子
-        final_offspring = self.bfo_toolkit.migration(temp_offspring)
-        
-        return final_offspring
+        # 3. 评估
+        for sol in offspring_population:
+            if sol.objectives is None:
+                self.decoder.decode(sol)
+
+        return offspring_population

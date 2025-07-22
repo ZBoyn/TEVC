@@ -13,7 +13,7 @@ def main():
     data_file_path = CONFIG['DATA_FILE_PATH']
     
     try:
-        problem_def = load_problem_from_file(data_file_path)
+        problem_def = load_problem_g_format(data_file_path)
     except FileNotFoundError:
         print(f"错误: 数据文件未找到, 请检查路径: {data_file_path}")
         return

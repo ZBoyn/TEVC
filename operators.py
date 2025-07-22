@@ -16,38 +16,38 @@ class BFO_Operators:
         
     def chemotaxis(self, parent_solution: Solution, current_step_size: float) -> Solution:
         """
-        趋向操作: 以一个父代解为起点, 进行Mmax步的局部搜索, 返回最终找到的解
-
-        Args:
-            parent_solution (Solution): 父代解
-            current_step_size (float): 当前步长
-
-        Returns:
-            Solution: 最终找到的解
+        趋向操作: 以一个父代解为起点, 进行Mmax步的迭代局部搜索, 返回最终找到的最优解.
+        这是一个迭代改进的过程, 每一步都在当前找到的最优解的基础上进行探索.
         """
         m_max = self.params.get('Mmax', 10)
         put_off_mutation_prob = self.params.get('put_off_mutation_prob', 0.1)
         put_off_mutation_strength = self.params.get('put_off_mutation_strength', 1)
         put_off_regression_prob = self.params.get('put_off_regression_prob', 0.7)
 
-        current_sol = parent_solution.copy()
+        # 1. 初始化: 当前最优解就是父代
+        current_best_sol = parent_solution.copy()
+        # 确保初始解已被评估
+        if current_best_sol.objectives is None:
+            self.decoder.decode(current_best_sol)
         
-        # BFO的位置编码, 仅在此算子内部临时使用
+        # BFO的位置编码, 用于探索邻域
         positions = np.random.uniform(-1, 1, size=(self.problem.num_jobs, 2))
         
+        # 2. 迭代搜索
         for _ in range(m_max):
-            original_sol = current_sol.copy()
-            
-            # 1. 生成一个候选解
-            # 1a. 翻滚与游泳, 生成新序列
+            # 2a. 生成一个基于当前最优解的候选解
+            # 翻滚与游泳, 生成新序列 (探索邻域)
             theta = np.random.uniform(0, 2 * np.pi, self.problem.num_jobs)
             deta = np.column_stack([np.cos(theta), np.sin(theta)])
-            positions += current_step_size * deta
-            distances = np.linalg.norm(positions, axis=1)
+            new_positions = positions + current_step_size * deta
+            
+            # 使用新的位置向量生成序列. 注意: 我们这里不直接使用 new_sequence = np.argsort(distances)
+            # 而是继续使用 BFO 思想, 从 new_positions 生成序列, 这样可以保留方向信息.
+            distances = np.linalg.norm(new_positions, axis=1)
             new_sequence = np.argsort(distances)
             
-            # 1b. 有偏向性地扰动put_off矩阵
-            new_put_off = current_sol.put_off.copy()
+            # 有偏向性地扰动put_off矩阵
+            new_put_off = current_best_sol.put_off.copy() # 从当前最优解的put_off开始
             if np.random.rand() < put_off_mutation_prob:
                 for _ in range(put_off_mutation_strength):
                     job_idx = np.random.randint(self.problem.num_jobs)
@@ -58,18 +58,18 @@ class BFO_Operators:
                     else:
                         new_put_off[job_idx, machine_idx] += 1
                         
-            # 构造并评估候选解 (final_schedule=None), 激活put_off
+            # 构造并评估候选解
             trial_sol = Solution(sequence=new_sequence, put_off=new_put_off, final_schedule=None)
             self.decoder.decode(trial_sol)
 
-            # 2. 基于Pareto支配关系决定是否接受移动
-            if not is_dominated(current_sol, trial_sol):
-                # 如果新解支配当前解, 则接受新解
-                current_sol = trial_sol
-            else:
-                positions -= current_step_size * deta
+            # 2b. 基于Pareto支配关系决定是否接受移动
+            # 如果候选解支配当前最优解, 则更新最优解和探索位置
+            if is_dominated(trial_sol, current_best_sol):
+                current_best_sol = trial_sol
+                positions = new_positions # 接受移动, 更新探索的中心点
+            # 否则, 不更新, 留在原地, positions不变, 在下一次循环从原位置继续探索
             
-        return current_sol
+        return current_best_sol
     
     def reproduction_crossover(self, parent1: Solution, parent2: Solution) -> tuple:
         """复制/交叉操作
