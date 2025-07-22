@@ -354,7 +354,8 @@ class LocalSearch_Operators:
         return final_solution
 
     def _calculate_earliest_times(self, sequence: np.ndarray) -> np.ndarray:
-        """辅助函数: 执行正向传播, 计算紧凑调度下的完工时间
+        """
+        辅助函数: 执行正向传播, 计算紧凑调度下的完工时间
 
         Args:
             sequence (np.ndarray): 工件序列
@@ -362,20 +363,32 @@ class LocalSearch_Operators:
         Returns:
             np.ndarray: 每个工件在每台机器上的最早完工时间
         """
-        # 逻辑和Deocoder.decode()类似(put_off矩阵为0)
         completion_times = np.zeros((self.problem.num_jobs, self.problem.num_machines))
+        
         for j_idx, job_id in enumerate(sequence):
             for i in range(self.problem.num_machines):
                 proc_time = self.problem.processing_times[job_id, i]
                 prev_job_id = sequence[j_idx - 1] if j_idx > 0 else -1
+                
                 est_from_prev_job = completion_times[prev_job_id, i] if prev_job_id != -1 else 0
                 est_from_prev_machine = completion_times[job_id, i - 1] if i > 0 else 0
+                
                 est = max(est_from_prev_job, est_from_prev_machine, self.problem.release_times[job_id])
                 
+                # 确定EST所在的时段
                 period_idx = np.searchsorted(self.problem.period_start_times, est, side='right') - 1
-                period_end_time = self.problem.period_start_times[period_idx + 1]
-                start_time = est if est + proc_time <= period_end_time else period_end_time
+                period_idx = max(0, period_idx) # 确保索引不为负
+
+                start_time = est
+                
+                # 检查是否需要跨时段
+                if period_idx < self.problem.num_periods - 1:
+                    period_end_time = self.problem.period_start_times[period_idx + 1]
+                    if start_time + proc_time > period_end_time:
+                        start_time = period_end_time # 非抢占, 只能推到下一个时段开始
+                
                 completion_times[job_id, i] = start_time + proc_time
+                
         return completion_times
     
     def _calculate_latest_times(self, sequence: np.ndarray, earliest_times: np.ndarray) -> np.ndarray:

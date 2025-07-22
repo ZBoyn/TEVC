@@ -33,7 +33,12 @@ class Decoder:
                     
                     # 紧凑排程的核心: 处理非抢占约束
                     p_idx = np.searchsorted(self.problem.period_start_times, est, side='right') - 1
-                    p_end_time = self.problem.period_start_times[p_idx + 1]
+                    p_idx = max(0, p_idx) # 确保 p_idx 不会是-1
+                    if p_idx + 1 < len(self.problem.period_start_times):
+                        p_end_time = self.problem.period_start_times[p_idx + 1]
+                    else:
+                        p_end_time = self.problem.deadline
+                    
                     start_time = est if est + proc_time <= p_end_time else p_end_time
                     temp_completion_times[job_id, i] = start_time + proc_time
             completion_times = temp_completion_times
@@ -88,7 +93,13 @@ class Decoder:
         
         while remaining_proc_time > 1e-6:
             period_idx = np.searchsorted(self.problem.period_start_times, current_time, side='right') - 1
-            period_end_time = self.problem.period_start_times[period_idx + 1]
+            period_idx = max(0, period_idx) # 确保 period_idx 不会是-1
+            
+            if period_idx + 1 < len(self.problem.period_start_times):
+                period_end_time = self.problem.period_start_times[period_idx + 1]
+            else:
+                period_end_time = self.problem.deadline
+            
             price = self.problem.period_prices[period_idx]
             
             time_in_this_period = min(remaining_proc_time, period_end_time - current_time)

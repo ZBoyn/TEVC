@@ -69,3 +69,35 @@ def save_and_plot_results(pareto_front: List[Solution], problem_def: ProblemDefi
     plt.savefig(plot_path)
     print(f"Pareto前沿图像已保存到: {plot_path}")
     plt.close()
+
+def plot_intermediate_front(archive: List[Solution], current_gen: int, output_folder: str):
+    """
+    在进化过程中绘制并保存当前的帕累托前沿图
+
+    Args:
+        archive (List[Solution]): 当前的外部存档
+        current_gen (int): 当前代数
+        output_folder (str): 保存图像的文件夹路径
+    """
+    if not archive:
+        print(f"警告: 第 {current_gen} 代的外部存档为空, 跳过绘图.")
+        return
+
+    if not os.path.exists(output_folder):
+        os.makedirs(output_folder)
+        
+    objectives = np.array([sol.objectives for sol in archive])
+    
+    plt.figure(figsize=(10, 8))
+    plt.scatter(objectives[:, 0], objectives[:, 1], c='b', marker='o', label=f'Generation {current_gen}')
+    
+    plt.title(f'Pareto Front at Generation {current_gen}')
+    plt.xlabel("Total Energy Consumption (TEC)")
+    plt.ylabel("Total Weighted Agent Completion Time (TCTA)")
+    plt.legend()
+    plt.grid(True)
+    
+    plot_filename = os.path.join(output_folder, f'pareto_front_gen_{current_gen}.png')
+    plt.savefig(plot_filename)
+    plt.close()
+    print(f"已保存第 {current_gen} 代的前沿图像到: {plot_filename}")

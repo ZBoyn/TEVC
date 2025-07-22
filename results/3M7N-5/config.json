@@ -1,0 +1,30 @@
+{
+    "POP_SIZE": 50,
+    "MAX_GENERATIONS": 200,
+    "PLOT_PARAMS": {
+        "plot_frequency": 10,
+        "output_folder": "results\\3M7N-5"
+    },
+    "BFO_PARAMS": {
+        "Mmax": 10,
+        "C_initial": 0.1,
+        "C_final": 0.01,
+        "put_off_mutation_prob": 0.5,
+        "put_off_mutation_strength": 5
+    },
+    "INIT_PARAMS": {
+        "h1_count": 1,
+        "h2_count": 1,
+        "mutation_swaps": 30
+    },
+    "PROB_PARAMS": {
+        "prob_crossover": 0.3,
+        "prob_chemotaxis": 0.3,
+        "prob_prefer_agent": 0.2,
+        "prob_right_shift": 0.2,
+        "prob_migration": 0.1,
+        "polishing_phase_gens": 30,
+        "destroy_rebuild_alpha": 0.5
+    },
+    "elapsed_time_seconds": 29.977487802505493
+}
