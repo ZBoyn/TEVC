@@ -15,15 +15,24 @@ def main():
         'Mmax': 10,
         'C_initial': 0.1,
         'C_final': 0.01,
-        'put_off_mutation_prob': 0.1,
+        'put_off_mutation_prob': 0.5,
         'put_off_mutation_strength': 2
     }
     
     # 初始化参数
     INIT_PARAMS = {
-        'h1_count': 1,  # 使用Heuristic 1生成5个解
-        'h2_count': 1,  # 使用Heuristic 2生成5个解
-        'mutation_swaps': 30  # 随机生成30次交换的解
+        'h1_count': 1,
+        'h2_count': 1,
+        'mutation_swaps': 30
+    }
+
+    # 概率参数
+    PROB_PARAMS = {
+        'prob_crossover': 0.5,
+        'prob_chemotaxis': 0.2,
+        'prob_prefer_agent': 0.1,
+        'prob_right_shift': 0.1,
+        'prob_migration': 0.1
     }
     
     try:
@@ -37,7 +46,8 @@ def main():
         pop_size=POP_SIZE,
         max_generations=MAX_GENERATIONS,
         bfo_params=BFO_PARAMS,
-        init_params=INIT_PARAMS
+        init_params=INIT_PARAMS,
+        prob_params=PROB_PARAMS
     )
     
     final_population = algorithm.run()

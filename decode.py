@@ -55,18 +55,30 @@ class Decoder:
                 if current_period_idx + 1 < len(self.problem.period_start_times):
                     period_end_time = self.problem.period_start_times[current_period_idx + 1]
                 else:
-                    raise ValueError("当前时段索引超出范围, 请检查put_off矩阵和时段定义")
+                    # 修复: 最后一个时段的结束时间是全局deadline
+                    period_end_time = self.problem.deadline
                 
                 if delayed_est + proc_time <= period_end_time:
                     actual_start_time = delayed_est
                 else:
-                    # 如果当前时段无法容纳该工件，则推迟到下一个可用时段
-                    actual_start_time = self.problem.period_start_times[current_period_idx + 1]
+                    # 如果当前时段无法容纳该工件, 则推迟到下一个可用时段
+                    # 修复: 必须检查是否存在下一个时段
+                    if current_period_idx + 1 < len(self.problem.period_start_times):
+                        actual_start_time = self.problem.period_start_times[current_period_idx + 1]
+                    else:
+                        # 如果已是最后一个时段且无法容纳, 则接受溢出,
+                        # 后续的deadline检查会将其标记为不可行解.
+                        actual_start_time = delayed_est
                 
                 completion_times[job_id, machine_id] = actual_start_time + proc_time
                 final_period_idx = np.searchsorted(self.problem.period_start_times, actual_start_time, side='right') - 1
                 operation_periods[job_id, machine_id] = final_period_idx
         
+        # 应用惩罚机制
+        if completion_times.max() > self.problem.deadline + 1e-6:
+            solution.objectives = np.array([np.inf, np.inf])
+            return solution.objectives
+
         tec = 0.0
         prices = self.problem.period_prices[operation_periods]
         energy_matrix = self.problem.power_consumption * self.problem.processing_times

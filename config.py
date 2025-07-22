@@ -19,6 +19,7 @@ class ProblemDefinition:
     num_machines: int = field(init=False)
     num_agents: int = field(init=False)
     num_periods: int = field(init=False)
+    deadline: float = field(init=False)
     
     # 映射表和属性
     job_to_agent_map: Dict[int, int] = field(default_factory=dict, init=False)
@@ -31,6 +32,18 @@ class ProblemDefinition:
         self.num_jobs, self.num_machines = self.processing_times.shape
         self.num_agents = len(self.agent_weights)
         self.num_periods = len(self.period_prices)
+        
+        # 问题的最终截止日期是最后一个时段的结束时间
+        if len(self.period_start_times) > self.num_periods:
+            self.deadline = self.period_start_times[-1]
+        else:
+            # 如果数据格式不规范, 做一个兼容处理
+            # 假设最后一个时段的持续时间与其他时段平均持续时间相同
+            if self.num_periods > 1:
+                avg_duration = (self.period_start_times[-1] - self.period_start_times[0]) / (self.num_periods - 1)
+                self.deadline = self.period_start_times[-1] + avg_duration
+            else:
+                self.deadline = self.period_start_times[0] * 2 # 兜底
         
         # 创建工件到代理的映射
         for agent_idx in range(self.num_agents):

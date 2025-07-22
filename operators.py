@@ -209,67 +209,69 @@ class LocalSearch_Operators:
         return child_solution
 
     def right_shift(self, parent_solution: Solution) -> Solution:
+        """
+        右移策略 (Right Shift) - 新的稳健实现
+        目标: 给定一个固定的工件序列, 在不显著恶化完工时间的前提下,
+               通过推迟非关键路径上的工序来最小化总电力成本 (TEC).
+        """
+        # 0. 准备工作
         child_solution = parent_solution.copy()
         sequence = child_solution.sequence
         
-        # 阶段一: 正向传播 计算最早时间
-        earliest_completion_times = self._calculate_earliest_times(sequence)
+        # 确保输入解是紧凑的 (put_off为0)
+        child_solution.put_off = np.zeros_like(parent_solution.put_off)
+        self.decoder.decode(child_solution)
         
-        # 阶段二: 反向传播 计算最晚时间
-        latest_completion_times = self._calculate_latest_times(sequence, earliest_completion_times)
+        # 1. 正向传播: 计算最早开始/完成时间 (EST / ECT)
+        ect_matrix = self._calculate_earliest_times(sequence)
+        
+        # 2. 反向传播: 计算最晚开始/完成时间 (LST / LCT)
+        lct_matrix = self._calculate_latest_times(sequence, ect_matrix)
 
-        # 阶段三: 决策 生成新的put_off矩阵
-        new_put_off = np.zeros_like(child_solution.put_off)
-        final_completion_times = earliest_completion_times.copy()
-        
-        # 必须按逆序进行决策, 以确保依赖关系正确
-        for job_id in reversed(sequence):
-            for machine_id in range(self.problem.num_machines - 1, -1, -1):
+        # 3. 决策与移动: 直接计算最优的 put_off 时段数
+        final_put_off_periods = np.zeros_like(child_solution.put_off, dtype=int)
+
+        for job_id in sequence:
+            for machine_id in range(self.problem.num_machines):
                 proc_time = self.problem.processing_times[job_id, machine_id]
                 
-                # a. 确定此操作的最早和最晚开始时间
-                earliest_start_time = earliest_completion_times[job_id, machine_id] - proc_time
-                latest_start_time = latest_completion_times[job_id, machine_id] - proc_time
+                est = ect_matrix[job_id, machine_id] - proc_time
+                lst = lct_matrix[job_id, machine_id] - proc_time
                 
-                if latest_start_time < earliest_start_time: continue # 没有移动空间
+                if lst - est < 1e-6:
+                    continue
 
-                # b. 找到此时间窗口[EST, LST]覆盖的所有电价时段
-                start_period = np.searchsorted(self.problem.period_start_times, earliest_start_time, side='right') - 1
-                end_period = np.searchsorted(self.problem.period_start_times, latest_start_time, side='right') - 1
+                base_period_idx = np.searchsorted(self.problem.period_start_times, est, side='right') - 1
                 
-                # c. 在可行时段中, 选择最便宜的一个
-                candidate_periods = list(range(start_period, end_period + 1))
-                if not candidate_periods: continue
-                
-                cheapest_period_idx = min(candidate_periods, key=lambda p_idx: self.problem.period_prices[p_idx])
-                
-                # d. 尝试将操作安排在最便宜时段的开始
-                target_start_time = self.problem.period_start_times[cheapest_period_idx]
-                
-                # 新的开始时间必须 >= 最早开始时间, 且 <= 最晚开始时间
-                new_start_time = max(earliest_start_time, target_start_time)
-                
-                # 检查新的完工时间是否会超过最晚完工时间
-                if new_start_time + proc_time > latest_completion_times[job_id, machine_id] + 1e-6:
-                    # 如果移动到时段开头会超时，则保持原样（紧凑排列）
-                    new_start_time = earliest_start_time
+                cheapest_price = np.inf
+                best_target_period_idx = base_period_idx
 
-                # e. 计算并存储所需的put_off值
-                required_delay = new_start_time - earliest_start_time
-                new_put_off[job_id, machine_id] = required_delay
-        
-        # 将put_off从"时间推迟"转换为我们的"时段推迟"编码
-        final_put_off_periods = np.zeros_like(new_put_off, dtype=int)
-        for job_id in range(self.problem.num_jobs):
-             for machine_id in range(self.problem.num_machines):
-                est = earliest_completion_times[job_id, machine_id] - self.problem.processing_times[job_id, machine_id]
-                delayed_est = est + new_put_off[job_id, machine_id]
+                # 寻找最优目标时段
+                # 遍历所有 est 所在的时段 到 lst 可能结束的时段
+                start_p_idx = base_period_idx
+                end_p_idx = np.searchsorted(self.problem.period_start_times, lst, side='right') - 1
                 
-                base_period = np.searchsorted(self.problem.period_start_times, est, side='right') - 1
-                final_period = np.searchsorted(self.problem.period_start_times, delayed_est, side='right') - 1
-                final_put_off_periods[job_id, machine_id] = max(0, final_period - base_period)
+                current_price = self.problem.period_prices[base_period_idx]
+
+                for p_idx in range(start_p_idx, end_p_idx + 2):
+                    if p_idx >= len(self.problem.period_prices): continue
+                    
+                    # 模拟decode的行为, 计算移动到该时段后的实际开始时间
+                    potential_start_time = max(est, self.problem.period_start_times[p_idx])
+                    
+                    if potential_start_time > lst + 1e-6:
+                        break # 超出最晚开始时间, 后续时段更不可行
+                    
+                    price = self.problem.period_prices[p_idx]
+                    if price < current_price:
+                        current_price = price
+                        best_target_period_idx = p_idx
+                
+                final_put_off_periods[job_id, machine_id] = max(0, best_target_period_idx - base_period_idx)
 
         child_solution.put_off = final_put_off_periods
+        #【重要】应用了新的put_off后,需要重新解码一次以更新目标函数值
+        self.decoder.decode(child_solution)
         return child_solution
     
     def _calculate_earliest_times(self, sequence: np.ndarray) -> np.ndarray:
@@ -309,22 +311,35 @@ class LocalSearch_Operators:
         """
         latest_completion = np.full((self.problem.num_jobs, self.problem.num_machines), np.inf)
         
-        # 使用最早完工时间的最大值作为截止日期
-        deadline = earliest_times.max()
-        latest_completion[sequence[-1], -1] = deadline # 最后一个工件在最后一台机器上的最晚完工时间
+        # 使用问题的全局deadline作为反向传播的起点
+        deadline = self.problem.deadline
         
+        # 初始化所有无后继的操作的最晚完成时间为deadline
+        last_job_in_sequence = sequence[-1]
+        for m_id in range(self.problem.num_machines):
+            latest_completion[last_job_in_sequence, m_id] = deadline
+        # 修复: ProblemDefinition没有job_ids属性, 使用num_jobs生成ID.
+        for j_id in range(self.problem.num_jobs):
+            latest_completion[j_id, self.problem.num_machines - 1] = deadline
+
+
         for i in range(self.problem.num_machines - 1, -1, -1):
+            # 需要按序列的逆序进行
             for j_idx in range(self.problem.num_jobs - 1, -1, -1):
                 job_id = sequence[j_idx]
-                proc_time = self.problem.processing_times[job_id, i]
                 
-                # 来自后序工件的约束
-                next_job_id = sequence[j_idx + 1] if j_idx < self.problem.num_jobs - 1 else -1
-                limit_from_next_job = latest_completion[next_job_id, i] - self.problem.processing_times[next_job_id, i] if next_job_id != -1 else deadline
+                # 来自后序工件的约束 (同一台机器)
+                limit_from_next_job_on_machine = np.inf
+                if j_idx < self.problem.num_jobs - 1:
+                    next_job_id = sequence[j_idx + 1]
+                    limit_from_next_job_on_machine = latest_completion[next_job_id, i] - self.problem.processing_times[next_job_id, i]
                 
                 # 来自本工件的后道工序的约束
-                limit_from_next_machine = latest_completion[job_id, i + 1] - self.problem.processing_times[job_id, i+1] if i < self.problem.num_machines - 1 else deadline
-                
-                latest_completion[job_id, i] = min(limit_from_next_job, limit_from_next_machine)
+                limit_from_next_machine_for_job = np.inf
+                if i < self.problem.num_machines - 1:
+                    limit_from_next_machine_for_job = latest_completion[job_id, i + 1] - self.problem.processing_times[job_id, i + 1]
+
+                current_lct = min(latest_completion[job_id, i], limit_from_next_job_on_machine, limit_from_next_machine_for_job)
+                latest_completion[job_id, i] = current_lct
         
         return latest_completion
