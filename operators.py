@@ -104,14 +104,14 @@ class BFO_Operators:
             if child2_seq[idx] == -1: child2_seq[idx] = p1_remaining.pop(0)
         
         # 对putoff执行均匀交叉
-        # put_off1, put_off2 = parent1.put_off, parent2.put_off
-        # mask = np.random.rand(*put_off1.shape) < 0.5
+        put_off1, put_off2 = parent1.put_off, parent2.put_off
+        mask = np.random.rand(*put_off1.shape) < 0.5
         
-        # child1_put_off = np.where(mask, put_off1, put_off2)
-        # child2_put_off = np.where(mask, put_off2, put_off1)
+        child1_put_off = np.where(mask, put_off1, put_off2)
+        child2_put_off = np.where(mask, put_off2, put_off1)
 
-        child1_put_off = np.zeros((self.problem.num_jobs, self.problem.num_machines), dtype=int)
-        child2_put_off = np.zeros((self.problem.num_jobs, self.problem.num_machines), dtype=int)
+        # child1_put_off = np.zeros((self.problem.num_jobs, self.problem.num_machines), dtype=int)
+        # child2_put_off = np.zeros((self.problem.num_jobs, self.problem.num_machines), dtype=int)
         
         child1 = Solution(sequence=child1_seq, put_off=child1_put_off, final_schedule=None)
         child2 = Solution(sequence=child2_seq, put_off=child2_put_off, final_schedule=None)
@@ -209,6 +209,67 @@ class LocalSearch_Operators:
         child_solution.final_schedule = None
         
         return child_solution
+    
+    def destroy_rebuild(self, parent_solution: Solution, alpha: float) -> Solution:
+        """
+        基于NEH思想的破坏与重建算子.
+        1. 破坏: 移除一部分加工时间最短的"灵活"工件.
+        2. 重建: 按照总加工时间最长(LPT)的顺序, 将被移除的工件逐个插入到最佳位置.
+        """
+        child_solution = parent_solution.copy()
+        initial_sequence = child_solution.sequence
+        num_jobs = self.problem.num_jobs
+
+        # 1. 破坏阶段
+        # 直接从problem definition中获取预先计算好的信息
+        total_processing_times = self.problem.job_total_processing_times
+        sorted_jobs_by_proc_time_asc = self.problem.job_spt_order
+        
+        num_to_destroy = int(alpha * num_jobs)
+        if num_to_destroy == 0:
+            return child_solution # 如果破坏数量为0, 直接返回原解
+
+        jobs_to_destroy = set(sorted_jobs_by_proc_time_asc[:num_to_destroy])
+        
+        # 得到被破坏后的部分序列
+        partial_sequence = [job for job in initial_sequence if job not in jobs_to_destroy]
+
+        # 2. 重建阶段
+        # 按总加工时间降序(LPT)排序待插入的工件
+        jobs_to_rebuild = sorted(list(jobs_to_destroy), key=lambda k: -total_processing_times[k])
+
+        current_sequence = partial_sequence
+        for job_to_insert in jobs_to_rebuild:
+            best_insertion_sequence = None
+            min_tcta = float('inf')
+            
+            # 尝试所有可能的插入位置
+            for i in range(len(current_sequence) + 1):
+                temp_sequence_list = current_sequence[:i] + [job_to_insert] + current_sequence[i:]
+                
+                # 构造临时解并评估 (put_off为0, 专注于序列优化)
+                temp_sol = Solution(sequence=np.array(temp_sequence_list), put_off=np.zeros_like(child_solution.put_off))
+                self.decoder.decode(temp_sol)
+                
+                # 评价标准: 选择使 TCTA 最小的插入位置
+                current_tcta = temp_sol.objectives[1] # TCTA 在第二个目标
+                if current_tcta < min_tcta:
+                    min_tcta = current_tcta
+                    best_insertion_sequence = temp_sequence_list
+            
+            # 【修复】如果所有插入位置都导致无效解, best_insertion_sequence会是None.
+            # 这种情况下, 我们选择一个默认行为(例如插入到末尾)来防止程序崩溃.
+            # 产生的无效解会被后续的进化过程自然淘汰.
+            if best_insertion_sequence is None:
+                current_sequence = current_sequence + [job_to_insert]
+            else:
+                current_sequence = best_insertion_sequence
+            
+        # 3. 返回最终解 (标准的紧凑排程解)
+        final_solution = Solution(sequence=np.array(current_sequence), 
+                                  put_off=np.zeros_like(child_solution.put_off),
+                                  final_schedule=None)
+        return final_solution
 
     def right_shift(self, parent_solution: Solution) -> Solution:
         """
@@ -295,67 +356,6 @@ class LocalSearch_Operators:
         self.decoder.decode(child_solution)
         return child_solution
 
-    def destroy_rebuild(self, parent_solution: Solution, alpha: float) -> Solution:
-        """
-        基于NEH思想的破坏与重建算子.
-        1. 破坏: 移除一部分加工时间最短的"灵活"工件.
-        2. 重建: 按照总加工时间最长(LPT)的顺序, 将被移除的工件逐个插入到最佳位置.
-        """
-        child_solution = parent_solution.copy()
-        initial_sequence = child_solution.sequence
-        num_jobs = self.problem.num_jobs
-
-        # 1. 破坏阶段
-        # 直接从problem definition中获取预先计算好的信息
-        total_processing_times = self.problem.job_total_processing_times
-        sorted_jobs_by_proc_time_asc = self.problem.job_spt_order
-        
-        num_to_destroy = int(alpha * num_jobs)
-        if num_to_destroy == 0:
-            return child_solution # 如果破坏数量为0, 直接返回原解
-
-        jobs_to_destroy = set(sorted_jobs_by_proc_time_asc[:num_to_destroy])
-        
-        # 得到被破坏后的部分序列
-        partial_sequence = [job for job in initial_sequence if job not in jobs_to_destroy]
-
-        # 2. 重建阶段
-        # 按总加工时间降序(LPT)排序待插入的工件
-        jobs_to_rebuild = sorted(list(jobs_to_destroy), key=lambda k: -total_processing_times[k])
-
-        current_sequence = partial_sequence
-        for job_to_insert in jobs_to_rebuild:
-            best_insertion_sequence = None
-            min_tcta = float('inf')
-            
-            # 尝试所有可能的插入位置
-            for i in range(len(current_sequence) + 1):
-                temp_sequence_list = current_sequence[:i] + [job_to_insert] + current_sequence[i:]
-                
-                # 构造临时解并评估 (put_off为0, 专注于序列优化)
-                temp_sol = Solution(sequence=np.array(temp_sequence_list), put_off=np.zeros_like(child_solution.put_off))
-                self.decoder.decode(temp_sol)
-                
-                # 评价标准: 选择使 TCTA 最小的插入位置
-                current_tcta = temp_sol.objectives[1] # TCTA 在第二个目标
-                if current_tcta < min_tcta:
-                    min_tcta = current_tcta
-                    best_insertion_sequence = temp_sequence_list
-            
-            # 【修复】如果所有插入位置都导致无效解, best_insertion_sequence会是None.
-            # 这种情况下, 我们选择一个默认行为(例如插入到末尾)来防止程序崩溃.
-            # 产生的无效解会被后续的进化过程自然淘汰.
-            if best_insertion_sequence is None:
-                current_sequence = current_sequence + [job_to_insert]
-            else:
-                current_sequence = best_insertion_sequence
-            
-        # 3. 返回最终解 (标准的紧凑排程解)
-        final_solution = Solution(sequence=np.array(current_sequence), 
-                                  put_off=np.zeros_like(child_solution.put_off),
-                                  final_schedule=None)
-        return final_solution
-
     def _calculate_earliest_times(self, sequence: np.ndarray) -> np.ndarray:
         """
         辅助函数: 执行正向传播, 计算紧凑调度下的完工时间
@@ -393,56 +393,3 @@ class LocalSearch_Operators:
                 completion_times[job_id, i] = start_time + proc_time
                 
         return completion_times
-    
-    def _calculate_latest_times(self, sequence: np.ndarray, earliest_times: np.ndarray) -> np.ndarray:
-        """辅助函数: 执行反向传播, 计算最晚完工时间
-
-        Args:
-            sequence (np.ndarray): 工件序列
-            earliest_times (np.ndarray): 每个工件在每台机器上的最早完工时间
-
-        Returns:
-            np.ndarray: 每个工件在每台机器上的最晚完工时间
-        """
-        # 使用问题的全局 deadline 作为反向传播的起点.
-        # 这为 right_shift 提供了最大的可操作空间, 以便用时间换成本.
-        deadline = self.problem.deadline
-        
-        latest_completion = np.full((self.problem.num_jobs, self.problem.num_machines), np.inf)
-        
-        # 初始化所有无后继的操作(即序列最后一个工件, 和所有工件的最后一道工序)的最晚完成时间为deadline
-        last_job_in_sequence = sequence[-1]
-        last_machine_id = self.problem.num_machines - 1
-        
-        for m_id in range(self.problem.num_machines):
-            latest_completion[last_job_in_sequence, m_id] = deadline
-        for j_id in range(self.problem.num_jobs):
-            latest_completion[j_id, last_machine_id] = deadline
-        
-        # 确保最后一个操作的 LCT 就是 deadline
-        latest_completion[last_job_in_sequence, last_machine_id] = deadline
-
-        # 按机器和工件序列的逆序进行反向传播
-        for i in range(self.problem.num_machines - 1, -1, -1):
-            for j_idx in range(self.problem.num_jobs - 1, -1, -1):
-                job_id = sequence[j_idx]
-                
-                # 来自后序工件的约束 (同一台机器)
-                limit_from_next_job_on_machine = np.inf
-                if j_idx < self.problem.num_jobs - 1:
-                    next_job_id = sequence[j_idx + 1]
-                    # LST of next job on the same machine
-                    limit_from_next_job_on_machine = latest_completion[next_job_id, i] - self.problem.processing_times[next_job_id, i]
-                
-                # 来自本工件的后道工序的约束
-                limit_from_next_machine_for_job = np.inf
-                if i < self.problem.num_machines - 1:
-                    # LST of same job on the next machine
-                    limit_from_next_machine_for_job = latest_completion[job_id, i + 1] - self.problem.processing_times[job_id, i + 1]
-
-                # 当前已有的 LCT (可能来自之前的初始化或更强的约束)
-                current_lct_limit = latest_completion[job_id, i]
-                
-                latest_completion[job_id, i] = min(current_lct_limit, limit_from_next_job_on_machine, limit_from_next_machine_for_job)
-        
-        return latest_completion

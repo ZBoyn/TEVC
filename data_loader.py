@@ -20,7 +20,7 @@ def load_problem_from_file(file_path: str) -> ProblemDefinition:
 
     raw_data = {}
     try:
-        with open(file_path, 'r', encoding='utf-8') as f:
+        with open(file_path, 'r', encoding='GB2312') as f:
             for line in f:
                 line = line.strip()
                 if not line or '=' not in line:
