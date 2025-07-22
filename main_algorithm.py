@@ -3,7 +3,7 @@ from heu_init import Initializer
 import numpy as np
 from decode import Decoder
 from typing import List
-from moea_tools import non_dominated_sort, crowding_distance_assignment, is_dominated
+from moea_tools import non_dominated_sort, remove_duplicates, selection, tournament_selection
 from operators import BFO_Operators, LocalSearch_Operators
 from results_handler import plot_intermediate_front
 import os
@@ -73,13 +73,13 @@ class EvolutionaryAlgorithm:
                 combined_population = self.population + polished_offspring
                 
                 # 去重
-                deduplicated_population = self._remove_duplicates(combined_population)
+                deduplicated_population = remove_duplicates(combined_population)
                 
                 print(f"合并与去重: {len(combined_population)} -> {len(deduplicated_population)} 个独特解")
 
                 # NSGA-II 精英选择
                 fronts = non_dominated_sort(deduplicated_population)
-                self.population = self._selection(fronts)
+                self.population = selection(fronts, self.pop_size)
                 
                 print(f"精英选择完成, 新种群大小: {len(self.population)}")
                 print("-" * 50)
@@ -97,11 +97,11 @@ class EvolutionaryAlgorithm:
                 combined_population = self.population + offspring_population
                 
                 # 步骤C.1: 移除重复解
-                unique_population = self._remove_duplicates(combined_population)
+                unique_population = remove_duplicates(combined_population)
 
                 # 步骤D: NSGA-II 环境选择
                 fronts = non_dominated_sort(unique_population)
-                self.population = self._selection(fronts)
+                self.population = selection(fronts, self.pop_size)
 
             # 定期绘制和保存帕累托前沿图
             if self.plot_params and self.plot_params.get('plot_frequency', 0) > 0 and (gen + 1) % self.plot_params['plot_frequency'] == 0:
@@ -124,7 +124,7 @@ class EvolutionaryAlgorithm:
         combined_archive = self.archive + new_solutions
         
         # 2. 基因型去重 (基于解的编码)
-        genotype_unique_solutions = self._remove_duplicates(combined_archive)
+        genotype_unique_solutions = remove_duplicates(combined_archive)
 
         # 3. 对基因型唯一的解进行非支配排序
         fronts = non_dominated_sort(genotype_unique_solutions)
@@ -141,41 +141,6 @@ class EvolutionaryAlgorithm:
                 phenotype_unique_solutions[objectives_tuple] = sol
         
         self.archive = list(phenotype_unique_solutions.values())
-
-
-    def _remove_duplicates(self, population: List[Solution]) -> List[Solution]:
-        """
-        移除种群中的重复解.
-        一个解的唯一标识(基因型)由它的 `final_schedule` (如果存在) 或 `sequence` 和 `put_off` 组合决定.
-        """
-        unique_solutions = []
-        seen_signatures = set()
-
-        for sol in population:
-            signature = None
-            if sol.final_schedule is not None:
-                # 如果一个解有精确的调度(final_schedule), 那么这个调度就是它的唯一标识
-                # sequence 和 put_off 此时可以被认为是"历史遗留"的生成信息
-                try:
-                    signature = tuple(map(tuple, sol.final_schedule))
-                except TypeError:
-                    continue
-            else:
-                # 如果没有精确调度, 则解由其基本编码(sequence, put_off)定义
-                if sol.sequence is None: # sequence 是必须的
-                    continue
-                
-                sequence_tuple = tuple(sol.sequence)
-                # 即使 put_off 通常为0, 也将其包含在签名中以保持一致性
-                put_off_tuple = tuple(map(tuple, sol.put_off)) if sol.put_off is not None else tuple()
-                
-                signature = (sequence_tuple, put_off_tuple)
-            
-            if signature not in seen_signatures:
-                seen_signatures.add(signature)
-                unique_solutions.append(sol)
-                
-        return unique_solutions
 
     def _generate_offspring(self, current_gen: int) -> List[Solution]:
         """通过调用工具箱中的算子来生成子代
@@ -208,31 +173,31 @@ class EvolutionaryAlgorithm:
             
             # 交叉操作 (生成两个子代)
             if rand_num < prob_crossover:
-                p1 = self._tournament_selection()
-                p2 = self._tournament_selection()
+                p1 = tournament_selection(self.population)
+                p2 = tournament_selection(self.population)
                 child1, child2 = self.bfo_toolkit.reproduction_crossover(p1, p2)
                 temp_offspring.extend([child1, child2])
             
             # 趋向操作
             elif rand_num < prob_crossover + prob_chemotaxis:
-                p1 = self._tournament_selection()
+                p1 = tournament_selection(self.population)
                 child = self.bfo_toolkit.chemotaxis(p1, current_step_size)
                 temp_offspring.append(child)
             
             # 优势代理优化 (TCTA偏向)
             elif rand_num < prob_crossover + prob_chemotaxis + prob_prefer_agent:
-                parent = self._tournament_selection()
+                parent = tournament_selection(self.population)
                 child = self.ls_toolkit.prefer_agent(parent)
                 temp_offspring.append(child)
 
             # 右移优化 (TEC偏向)
             elif rand_num < prob_crossover + prob_chemotaxis + prob_prefer_agent + prob_right_shift:
-                parent = self._tournament_selection()
+                parent = tournament_selection(self.population)
                 child = self.ls_toolkit.right_shift(parent)
                 temp_offspring.append(child)
             
             else:
-                p1 = self._tournament_selection()
+                p1 = tournament_selection(self.population)
                 child = self.bfo_toolkit.chemotaxis(p1, current_step_size)
                 temp_offspring.append(child)
 
@@ -248,48 +213,3 @@ class EvolutionaryAlgorithm:
         final_offspring = self.bfo_toolkit.migration(temp_offspring)
         
         return final_offspring
-
-    def _selection(self, fronts: List[List[Solution]]) -> List[Solution]:
-        """执行NSGA-II的选择操作, 填充下一代种群
-
-        Args:
-            fronts (List[List[Solution]]): 包含所有Pareto前沿的列表
-
-        Returns:
-            List[Solution]: 选择后的下一代种群
-        """
-        next_population = []
-        for front in fronts:
-            if len(next_population) + len(front) <= self.pop_size:
-                next_population.extend(front)
-            else:
-                # 如果当前前沿无法完全放入，则计算拥挤度并选择
-                crowding_distance_assignment(front)
-                # 按拥挤度降序排序
-                front.sort(key=lambda sol: sol.crowding_distance, reverse=True)
-                remaining_space = self.pop_size - len(next_population)
-                next_population.extend(front[:remaining_space])
-                break
-        return next_population
-    
-    def _tournament_selection(self) -> Solution:
-        """通过二元锦标赛选择法, 从当前种群中选择一个个体
-
-        Returns:
-            Solution: 选择的个体
-        """
-        p1_idx, p2_idx = np.random.choice(self.pop_size, size=2, replace=False)
-        parent1 = self.population[p1_idx]
-        parent2 = self.population[p2_idx]
-        
-        # 根据Pareto等级和拥挤度决定优胜者
-        if parent1.rank < parent2.rank:
-            return parent1
-        elif parent1.rank > parent2.rank:
-            return parent2
-        else:
-            # 如果等级相同，比较拥挤度
-            if parent1.crowding_distance > parent2.crowding_distance:
-                return parent1
-            else:
-                return parent2

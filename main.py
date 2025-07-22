@@ -9,12 +9,11 @@ import time
 def main():
     DATA_FILE_PATH = "data2\\3M10N-14.txt"
     
-    # 将所有参数打包到一个字典中, 以便保存
     config = {
         'POP_SIZE': 50,
         'MAX_GENERATIONS': 500,
         'PLOT_PARAMS': {
-            'plot_frequency': 10  # 每 10 代绘制一次前沿图
+            'plot_frequency': 10
         },
         'BFO_PARAMS': {
             'Mmax': 10,
@@ -32,7 +31,7 @@ def main():
             'prob_crossover': 0.3,
             'prob_chemotaxis': 0.3,
             'prob_prefer_agent': 0.2,
-            'prob_right_shift': 0.2, # 增加right_shift的探索概率
+            'prob_right_shift': 0.2,
             'prob_migration': 0.1,
             'polishing_phase_gens': 30,
             'destroy_rebuild_alpha': 0.5
@@ -45,11 +44,9 @@ def main():
         print(f"错误: 数据文件未找到, 请检查路径: {DATA_FILE_PATH}")
         return
     
-    # 从数据文件路径中提取问题名称作为子文件夹名
     problem_name = os.path.splitext(os.path.basename(DATA_FILE_PATH))[0]
     output_folder = os.path.join("results", problem_name)
     
-    # 将输出文件夹也添加到plot_params中, 方便传递
     config['PLOT_PARAMS']['output_folder'] = output_folder
 
     algorithm = EvolutionaryAlgorithm(
@@ -69,7 +66,6 @@ def main():
     elapsed_time = end_time - start_time
     print(f"\n算法总执行时间: {elapsed_time:.2f} 秒")
     
-    # 将执行时间保存到config中
     config['elapsed_time_seconds'] = elapsed_time
 
     save_and_plot_results(final_population, problem_def, output_folder, config)
