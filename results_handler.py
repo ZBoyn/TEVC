@@ -1,16 +1,20 @@
 import pandas as pd
 import matplotlib.pyplot as plt
 from typing import List
-from config import Solution
+from config import Solution, ProblemDefinition
 import os
+import numpy as np
+import json
 
-def save_and_plot_results(pareto_front: List[Solution], output_folder: str = "results"):
+def save_and_plot_results(pareto_front: List[Solution], problem_def: ProblemDefinition, output_folder: str, config: dict):
     """
-    将Pareto前沿的解保存到CSV文件, 并绘制散点图
+    将Pareto前沿的解保存到CSV文件, 绘制散点图, 并保存当次运行的参数配置
 
     Args:
         pareto_front (List[Solution]): 包含最优解的列表
-        output_folder (str): 保存结果的文件夹路径
+        problem_def (ProblemDefinition): 问题定义, 用于计算时段
+        output_folder (str): 保存结果的文件夹路径 (例如 "results/data_A3_J7_M3_1")
+        config (dict): 包含当次运行所有参数的字典
     """
     if not pareto_front:
         print("警告: Pareto前沿为空, 无法保存或绘图")
@@ -21,17 +25,34 @@ def save_and_plot_results(pareto_front: List[Solution], output_folder: str = "re
     
     results_data = []
     for sol in pareto_front:
+        period_schedule_str = "N/A"
+        if sol.completion_times is not None:
+            # 根据完成时间计算每个工序的开始时间
+            start_times = sol.completion_times - problem_def.processing_times
+            
+            # 找到每个开始时间对应的时段索引
+            period_indices = np.searchsorted(problem_def.period_start_times, start_times, side='right') - 1
+            
+            # 将二维数组格式化为字符串以便存储
+            period_schedule_str = ';'.join(','.join(map(str, row)) for row in period_indices)
+
         results_data.append({
             'TEC': sol.objectives[0],
             'TCTA': sol.objectives[1],
             'sequence': ','.join(map(str, sol.sequence)),
-            'put_off': str(sol.put_off[sol.put_off > 0]) # 只记录非零的put_off值
+            'period_schedule': period_schedule_str
         })
     
     df = pd.DataFrame(results_data)
     csv_path = os.path.join(output_folder, "pareto_front.csv")
     df.to_csv(csv_path, index=False)
     print(f"\n结果已保存到: {csv_path}")
+
+    # 保存参数配置
+    config_path = os.path.join(output_folder, "config.json")
+    with open(config_path, 'w') as f:
+        json.dump(config, f, indent=4)
+    print(f"参数配置已保存到: {config_path}")
 
     tec_values = [sol.objectives[0] for sol in pareto_front]
     tcta_values = [sol.objectives[1] for sol in pareto_front]

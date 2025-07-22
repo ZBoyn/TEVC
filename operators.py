@@ -45,23 +45,20 @@ class BFO_Operators:
             distances = np.linalg.norm(positions, axis=1)
             new_sequence = np.argsort(distances)
             
-            # # 1b. 有偏向性地扰动put_off矩阵
-            # new_put_off = current_sol.put_off.copy()
-            # if np.random.rand() < put_off_mutation_prob:
-            #     for _ in range(put_off_mutation_strength):
-            #         job_idx = np.random.randint(self.problem.num_jobs)
-            #         machine_idx = np.random.randint(self.problem.num_machines)
+            # 1b. 有偏向性地扰动put_off矩阵
+            new_put_off = current_sol.put_off.copy()
+            if np.random.rand() < put_off_mutation_prob:
+                for _ in range(put_off_mutation_strength):
+                    job_idx = np.random.randint(self.problem.num_jobs)
+                    machine_idx = np.random.randint(self.problem.num_machines)
                     
-            #         if new_put_off[job_idx, machine_idx] > 0 and np.random.rand() < 0.7: # 70%概率向0回归
-            #             new_put_off[job_idx, machine_idx] -= 1
-            #         else:
-            #             new_put_off[job_idx, machine_idx] += 1
+                    if new_put_off[job_idx, machine_idx] > 0 and np.random.rand() < 0.7: # 70%概率向0回归
+                        new_put_off[job_idx, machine_idx] -= 1
+                    else:
+                        new_put_off[job_idx, machine_idx] += 1
                         
-            # 1c. 构造并评估候选解
-            # trial_sol = Solution(sequence=new_sequence, put_off=new_put_off)
-            
-            # 1c. 构造并评估候选解 (put_off始终为0)
-            trial_sol = Solution(sequence=new_sequence, put_off=np.zeros_like(original_sol.put_off))
+            # 1c. 构造并评估候选解 (final_schedule=None, put_off=0)
+            trial_sol = Solution(sequence=new_sequence, put_off=np.zeros_like(original_sol.put_off), final_schedule=None)
             self.decoder.decode(trial_sol)
 
             # 2. 基于Pareto支配关系决定是否接受移动
@@ -115,8 +112,8 @@ class BFO_Operators:
         child1_put_off = np.zeros((self.problem.num_jobs, self.problem.num_machines), dtype=int)
         child2_put_off = np.zeros((self.problem.num_jobs, self.problem.num_machines), dtype=int)
         
-        child1 = Solution(sequence=child1_seq, put_off=child1_put_off)
-        child2 = Solution(sequence=child2_seq, put_off=child2_put_off)
+        child1 = Solution(sequence=child1_seq, put_off=child1_put_off, final_schedule=None)
+        child2 = Solution(sequence=child2_seq, put_off=child2_put_off, final_schedule=None)
         return child1, child2
     
     def migration(self, population: List[Solution]) -> List[Solution]:
@@ -152,7 +149,7 @@ class BFO_Operators:
                 # 触发迁徙 生成一个全新随机解
                 new_sequence = np.random.permutation(self.problem.num_jobs)
                 new_put_off = np.zeros_like(population[i].put_off)
-                migrated_offspring.append(Solution(sequence=new_sequence, put_off=new_put_off))
+                migrated_offspring.append(Solution(sequence=new_sequence, put_off=new_put_off, final_schedule=None))
             else:
                 # 未触发 直接保留父代
                 migrated_offspring.append(population[i].copy())
@@ -204,76 +201,158 @@ class LocalSearch_Operators:
                 
         child_solution.sequence = sequence
         
+        # 确保返回的解是一个标准的紧凑排程解
         child_solution.put_off = np.zeros_like(parent_solution.put_off)
+        child_solution.final_schedule = None
         
         return child_solution
 
     def right_shift(self, parent_solution: Solution) -> Solution:
         """
-        右移策略 (Right Shift) - 新的稳健实现
-        目标: 给定一个固定的工件序列, 在不显著恶化完工时间的前提下,
-               通过推迟非关键路径上的工序来最小化总电力成本 (TEC).
+        右移策略 (Right Shift) - 采用反向传播重写, 解决级联延迟问题
         """
         # 0. 准备工作
         child_solution = parent_solution.copy()
         sequence = child_solution.sequence
-        
-        # 确保输入解是紧凑的 (put_off为0)
-        child_solution.put_off = np.zeros_like(parent_solution.put_off)
-        self.decoder.decode(child_solution)
-        
-        # 1. 正向传播: 计算最早开始/完成时间 (EST / ECT)
-        ect_matrix = self._calculate_earliest_times(sequence)
-        
-        # 2. 反向传播: 计算最晚开始/完成时间 (LST / LCT)
-        lct_matrix = self._calculate_latest_times(sequence, ect_matrix)
+        num_jobs, num_machines = self.problem.num_jobs, self.problem.num_machines
 
-        # 3. 决策与移动: 直接计算最优的 put_off 时段数
-        final_put_off_periods = np.zeros_like(child_solution.put_off, dtype=int)
+        # 1. 计算基准的最早完成时间 (前向传播)
+        # 这个矩阵是固定的, 作为计算任何工序EST的依据
+        base_ect_matrix = self._calculate_earliest_times(sequence)
 
-        for job_id in sequence:
-            for machine_id in range(self.problem.num_machines):
-                proc_time = self.problem.processing_times[job_id, machine_id]
+        # 2. 核心: 反向传播计算最终调度
+        # final_ct_matrix 用于存储我们为每个工序确定的最终完成时间
+        final_ct_matrix = base_ect_matrix.copy()
+
+        for i in range(num_machines - 1, -1, -1):  # 从最后一道机器开始
+            for j_idx in range(num_jobs - 1, -1, -1): # 从序列中最后一个工件开始
+                job_id = sequence[j_idx]
+                proc_time = self.problem.processing_times[job_id, i]
+
+                # 2a. 确定当前工序(j,i)的调度时间窗 [est, lct]
+                # EST (最早开始时间) 由其前序工序的 *基准* 完成时间决定
+                est_from_prev_job = base_ect_matrix[sequence[j_idx - 1], i] if j_idx > 0 else 0
+                est_from_prev_machine = base_ect_matrix[job_id, i - 1] if i > 0 else 0
+                est = max(est_from_prev_job, est_from_prev_machine, self.problem.release_times[job_id])
+
+                # LCT (最晚完成时间) 由其后继工序 *已确定* 的最终开始时间决定
+                lct_from_next_job = np.inf
+                if j_idx < num_jobs - 1:
+                    next_job_id = sequence[j_idx + 1]
+                    # 后继工件的最终开始时间 = 最终完成时间 - 它的处理时间
+                    lct_from_next_job = final_ct_matrix[next_job_id, i] - self.problem.processing_times[next_job_id, i]
+
+                lct_from_next_machine = np.inf
+                if i < num_machines - 1:
+                    # 后继工序的最终开始时间
+                    lct_from_next_machine = final_ct_matrix[job_id, i + 1] - self.problem.processing_times[job_id, i + 1]
                 
-                est = ect_matrix[job_id, machine_id] - proc_time
-                lst = lct_matrix[job_id, machine_id] - proc_time
-                
+                # 同时要受全局 Deadline 约束
+                lct = min(lct_from_next_job, lct_from_next_machine, self.problem.deadline)
+                lst = lct - proc_time
+
+                # 如果没有可移动空间, 则该工序的最终完成时间就是其基准ECT, 直接进入下一次循环
                 if lst - est < 1e-6:
+                    final_ct_matrix[job_id, i] = base_ect_matrix[job_id, i]
                     continue
 
-                base_period_idx = np.searchsorted(self.problem.period_start_times, est, side='right') - 1
-                
-                cheapest_price = np.inf
-                best_target_period_idx = base_period_idx
+                # 2b. 在[est, lst]窗口内, 为当前工序寻找成本最低的开始时间
+                best_start_time = est
+                min_cost = self.decoder.calculate_op_cost(est, proc_time)
 
-                # 寻找最优目标时段
-                # 遍历所有 est 所在的时段 到 lst 可能结束的时段
-                start_p_idx = base_period_idx
+                # 遍历所有可能涉及到的时段
+                start_p_idx = np.searchsorted(self.problem.period_start_times, est, side='right') - 1
                 end_p_idx = np.searchsorted(self.problem.period_start_times, lst, side='right') - 1
-                
-                current_price = self.problem.period_prices[base_period_idx]
 
                 for p_idx in range(start_p_idx, end_p_idx + 2):
                     if p_idx >= len(self.problem.period_prices): continue
                     
-                    # 模拟decode的行为, 计算移动到该时段后的实际开始时间
-                    potential_start_time = max(est, self.problem.period_start_times[p_idx])
+                    potential_start = max(est, self.problem.period_start_times[p_idx])
                     
-                    if potential_start_time > lst + 1e-6:
-                        break # 超出最晚开始时间, 后续时段更不可行
-                    
-                    price = self.problem.period_prices[p_idx]
-                    if price < current_price:
-                        current_price = price
-                        best_target_period_idx = p_idx
-                
-                final_put_off_periods[job_id, machine_id] = max(0, best_target_period_idx - base_period_idx)
+                    # 模拟解码器, 计算真实开始时间 (处理非抢占)
+                    p_end = self.problem.period_start_times[p_idx + 1]
+                    actual_start_time = potential_start if potential_start + proc_time <= p_end else p_end
 
-        child_solution.put_off = final_put_off_periods
-        #【重要】应用了新的put_off后,需要重新解码一次以更新目标函数值
+                    if actual_start_time > lst + 1e-6:
+                        break # 后续的移动更不可行
+
+                    cost = self.decoder.calculate_op_cost(actual_start_time, proc_time)
+                    if cost < min_cost:
+                        min_cost = cost
+                        best_start_time = actual_start_time
+
+                # 2c. 根据找到的最佳开始时间, 更新该工序的最终完成时间
+                final_ct_matrix[job_id, i] = best_start_time + proc_time
+
+        # 3. 后处理: 将计算出的最终调度结果直接存入解中
+        child_solution.final_schedule = final_ct_matrix
+        child_solution.put_off = np.zeros_like(child_solution.put_off) # put_off不再使用, 但保持结构完整
+
+        # 最后用标准的解码器验证并获得最终目标值
         self.decoder.decode(child_solution)
         return child_solution
-    
+
+    def destroy_rebuild(self, parent_solution: Solution, alpha: float) -> Solution:
+        """
+        基于NEH思想的破坏与重建算子.
+        1. 破坏: 移除一部分加工时间最短的"灵活"工件.
+        2. 重建: 按照总加工时间最长(LPT)的顺序, 将被移除的工件逐个插入到最佳位置.
+        """
+        child_solution = parent_solution.copy()
+        initial_sequence = child_solution.sequence
+        num_jobs = self.problem.num_jobs
+
+        # 1. 破坏阶段
+        # 直接从problem definition中获取预先计算好的信息
+        total_processing_times = self.problem.job_total_processing_times
+        sorted_jobs_by_proc_time_asc = self.problem.job_spt_order
+        
+        num_to_destroy = int(alpha * num_jobs)
+        if num_to_destroy == 0:
+            return child_solution # 如果破坏数量为0, 直接返回原解
+
+        jobs_to_destroy = set(sorted_jobs_by_proc_time_asc[:num_to_destroy])
+        
+        # 得到被破坏后的部分序列
+        partial_sequence = [job for job in initial_sequence if job not in jobs_to_destroy]
+
+        # 2. 重建阶段
+        # 按总加工时间降序(LPT)排序待插入的工件
+        jobs_to_rebuild = sorted(list(jobs_to_destroy), key=lambda k: -total_processing_times[k])
+
+        current_sequence = partial_sequence
+        for job_to_insert in jobs_to_rebuild:
+            best_insertion_sequence = None
+            min_tcta = float('inf')
+            
+            # 尝试所有可能的插入位置
+            for i in range(len(current_sequence) + 1):
+                temp_sequence_list = current_sequence[:i] + [job_to_insert] + current_sequence[i:]
+                
+                # 构造临时解并评估 (put_off为0, 专注于序列优化)
+                temp_sol = Solution(sequence=np.array(temp_sequence_list), put_off=np.zeros_like(child_solution.put_off))
+                self.decoder.decode(temp_sol)
+                
+                # 评价标准: 选择使 TCTA 最小的插入位置
+                current_tcta = temp_sol.objectives[1] # TCTA 在第二个目标
+                if current_tcta < min_tcta:
+                    min_tcta = current_tcta
+                    best_insertion_sequence = temp_sequence_list
+            
+            # 【修复】如果所有插入位置都导致无效解, best_insertion_sequence会是None.
+            # 这种情况下, 我们选择一个默认行为(例如插入到末尾)来防止程序崩溃.
+            # 产生的无效解会被后续的进化过程自然淘汰.
+            if best_insertion_sequence is None:
+                current_sequence = current_sequence + [job_to_insert]
+            else:
+                current_sequence = best_insertion_sequence
+            
+        # 3. 返回最终解 (标准的紧凑排程解)
+        final_solution = Solution(sequence=np.array(current_sequence), 
+                                  put_off=np.zeros_like(child_solution.put_off),
+                                  final_schedule=None)
+        return final_solution
+
     def _calculate_earliest_times(self, sequence: np.ndarray) -> np.ndarray:
         """辅助函数: 执行正向传播, 计算紧凑调度下的完工时间
 
@@ -309,22 +388,26 @@ class LocalSearch_Operators:
         Returns:
             np.ndarray: 每个工件在每台机器上的最晚完工时间
         """
-        latest_completion = np.full((self.problem.num_jobs, self.problem.num_machines), np.inf)
-        
-        # 使用问题的全局deadline作为反向传播的起点
+        # 使用问题的全局 deadline 作为反向传播的起点.
+        # 这为 right_shift 提供了最大的可操作空间, 以便用时间换成本.
         deadline = self.problem.deadline
         
-        # 初始化所有无后继的操作的最晚完成时间为deadline
+        latest_completion = np.full((self.problem.num_jobs, self.problem.num_machines), np.inf)
+        
+        # 初始化所有无后继的操作(即序列最后一个工件, 和所有工件的最后一道工序)的最晚完成时间为deadline
         last_job_in_sequence = sequence[-1]
+        last_machine_id = self.problem.num_machines - 1
+        
         for m_id in range(self.problem.num_machines):
             latest_completion[last_job_in_sequence, m_id] = deadline
-        # 修复: ProblemDefinition没有job_ids属性, 使用num_jobs生成ID.
         for j_id in range(self.problem.num_jobs):
-            latest_completion[j_id, self.problem.num_machines - 1] = deadline
+            latest_completion[j_id, last_machine_id] = deadline
+        
+        # 确保最后一个操作的 LCT 就是 deadline
+        latest_completion[last_job_in_sequence, last_machine_id] = deadline
 
-
+        # 按机器和工件序列的逆序进行反向传播
         for i in range(self.problem.num_machines - 1, -1, -1):
-            # 需要按序列的逆序进行
             for j_idx in range(self.problem.num_jobs - 1, -1, -1):
                 job_id = sequence[j_idx]
                 
@@ -332,14 +415,18 @@ class LocalSearch_Operators:
                 limit_from_next_job_on_machine = np.inf
                 if j_idx < self.problem.num_jobs - 1:
                     next_job_id = sequence[j_idx + 1]
+                    # LST of next job on the same machine
                     limit_from_next_job_on_machine = latest_completion[next_job_id, i] - self.problem.processing_times[next_job_id, i]
                 
                 # 来自本工件的后道工序的约束
                 limit_from_next_machine_for_job = np.inf
                 if i < self.problem.num_machines - 1:
+                    # LST of same job on the next machine
                     limit_from_next_machine_for_job = latest_completion[job_id, i + 1] - self.problem.processing_times[job_id, i + 1]
 
-                current_lct = min(latest_completion[job_id, i], limit_from_next_job_on_machine, limit_from_next_machine_for_job)
-                latest_completion[job_id, i] = current_lct
+                # 当前已有的 LCT (可能来自之前的初始化或更强的约束)
+                current_lct_limit = latest_completion[job_id, i]
+                
+                latest_completion[job_id, i] = min(current_lct_limit, limit_from_next_job_on_machine, limit_from_next_machine_for_job)
         
         return latest_completion

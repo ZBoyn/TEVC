@@ -25,6 +25,8 @@ class ProblemDefinition:
     job_to_agent_map: Dict[int, int] = field(default_factory=dict, init=False)
     agent_priority: List[int] = field(default_factory=list, init=False) # 按优劣排序的代理ID
     job_total_energy: np.ndarray = field(init=False) # 各工件总能耗，用于H2
+    job_total_processing_times: np.ndarray = field(init=False) # 各工件总加工时间, 用于NEH
+    job_spt_order: np.ndarray = field(init=False) # 按总加工时间升序排列的工件索引
     cheapest_period_index: int = field(init=False) # 最低电价时段的索引
     
     def __post_init__(self):
@@ -53,6 +55,8 @@ class ProblemDefinition:
                 self.job_to_agent_map[job_idx] = agent_idx
         
         self.job_total_energy = (self.processing_times * self.power_consumption).sum(axis=1) # 各工件总能耗
+        self.job_total_processing_times = self.processing_times.sum(axis=1) # 各工件总加工时间
+        self.job_spt_order = np.argsort(self.job_total_processing_times) # SPT: Shortest Processing Time
         self.cheapest_period_index = np.argmin(self.period_prices)
     
 @dataclass
@@ -60,6 +64,10 @@ class Solution:
     """定义一个解(individual)的结构"""
     sequence: np.ndarray
     put_off: np.ndarray
+    
+    # final_schedule可以直接存储一个(开始时间, 完成时间)的元组矩阵, 由right_shift算子生成
+    final_schedule: np.ndarray = None 
+    completion_times: np.ndarray = None # 用于缓存解码后的完成时间, 以便结果分析
     
     objectives: np.ndarray = field(default_factory=lambda: np.full(2, np.inf)) # [TEC, TCTA]
     rank: int = -1
@@ -69,6 +77,8 @@ class Solution:
         """创建解的一个深拷贝。"""
         return Solution(sequence=self.sequence.copy(),
                         put_off=self.put_off.copy(),
+                        final_schedule=self.final_schedule.copy() if self.final_schedule is not None else None,
+                        completion_times=self.completion_times.copy() if self.completion_times is not None else None,
                         objectives=self.objectives.copy(),
                         rank=self.rank,
                         crowding_distance=self.crowding_distance)

@@ -27,15 +27,16 @@ class EvolutionaryAlgorithm:
 
         self.population: List[Solution] = []
         self.archive: List[Solution] = []
+        self.polishing_phase_start_gen: int = max_generations - self.prob_params.get('polishing_phase_gens', 5)   # 执行NEH+RightShift的精修阶段
 
 
     def run(self):
         """执行完整的多目标进化算法流程"""
         # 初始化
         # 生成初始种群 (sequence + 全0的put_off矩阵)
-        h1_count = self.init_params.get('h1_count', 1) # 默认使用Heuristic 1
-        h2_count = self.init_params.get('h2_count', 1) # 默认使用Heuristic 2
-        mutation_swaps = self.init_params.get('mutation_swaps', 30) # 默认进行30次交换
+        h1_count = self.init_params.get('h1_count', 1)
+        h2_count = self.init_params.get('h2_count', 1)
+        mutation_swaps = self.init_params.get('mutation_swaps', 30)
         self.population = self.initializer.initialize_population(h1_count=h1_count, h2_count=h2_count, mutation_swaps=mutation_swaps)
 
         # 评估初始种群
@@ -49,8 +50,11 @@ class EvolutionaryAlgorithm:
         for gen in range(self.max_generations):
             print(f"\n第 {gen + 1}/{self.max_generations} 代进化")
             
-            # 步骤A: 生成子代种群
-            offspring_population = self._generate_offspring(gen)
+            # 判断是否进入精修阶段
+            if gen >= self.polishing_phase_start_gen:
+                offspring_population = self._polish_population()
+            else:
+                offspring_population = self._generate_offspring(gen)
 
             # 步骤B: 评估子代
             for sol in offspring_population:
@@ -108,7 +112,7 @@ class EvolutionaryAlgorithm:
     def _generate_offspring(self, current_gen: int) -> List[Solution]:
         """通过调用工具箱中的算子来生成子代
            概率性地选择不同的算子
-            注意是两阶段的 第一阶段进行繁殖和改进 第二阶段注入多样性
+           注意是两阶段的 第一阶段进行繁殖和改进 第二阶段注入多样性
             
         Args:
             current_gen (int): 当前代数
@@ -124,11 +128,10 @@ class EvolutionaryAlgorithm:
         current_step_size = c_initial - (c_initial - c_final) * progress
 
         # 定义算子概率
-        prob_crossover = self.prob_params.get('prob_crossover', 0.5)
+        prob_crossover = self.prob_params.get('prob_crossover', 0.4)
         prob_chemotaxis = self.prob_params.get('prob_chemotaxis', 0.2)
-        prob_prefer_agent = self.prob_params.get('prob_prefer_agent', 0.1)
-        prob_right_shift = self.prob_params.get('prob_right_shift', 0.1)
-        prob_migration = self.prob_params.get('prob_migration', 0.1)
+        prob_prefer_agent = self.prob_params.get('prob_prefer_agent', 0.2)
+        prob_right_shift = self.prob_params.get('prob_right_shift', 0.2)
         
         temp_offspring = []
         while len(temp_offspring) < self.pop_size:
@@ -154,11 +157,11 @@ class EvolutionaryAlgorithm:
                 child = self.ls_toolkit.prefer_agent(parent)
                 temp_offspring.append(child)
 
-            # # 右移优化 (TEC偏向)
-            # elif rand_num < prob_crossover + prob_chemotaxis + prob_prefer_agent + prob_right_shift:
-            #     parent = self._tournament_selection()
-            #     child = self.ls_toolkit.right_shift(parent)
-            #     temp_offspring.append(child)
+            # 右移优化 (TEC偏向)
+            elif rand_num < prob_crossover + prob_chemotaxis + prob_prefer_agent + prob_right_shift:
+                parent = self._tournament_selection()
+                child = self.ls_toolkit.right_shift(parent)
+                temp_offspring.append(child)
             
             else:
                 p1 = self._tournament_selection()
@@ -177,6 +180,48 @@ class EvolutionaryAlgorithm:
         final_offspring = self.bfo_toolkit.migration(temp_offspring)
         
         return final_offspring
+
+    def _polish_population(self) -> List[Solution]:
+        """
+        精修阶段: 对当前种群中的每个个体应用强大的局部搜索算子.
+        """
+        polished_offspring = []
+        alpha = self.prob_params.get('destroy_rebuild_alpha', 0.5) # 和日志中保持一致
+        
+        # 对种群中的每一个解应用destroy_rebuild
+        print(f"对 {len(self.population)} 个个体应用 Destroy & Rebuild + Right Shift (alpha={alpha})...")
+        for i, parent_sol in enumerate(self.population):
+            original_objectives = parent_sol.objectives.copy()
+
+            # 1. 先用 NEH 优化序列
+            neh_optimized_sol = self.ls_toolkit.destroy_rebuild(parent_sol, alpha)
+            
+            # 2. 再用 right_shift 优化 put_off
+            # 这一步确保了即使是精修阶段, 两个目标也都在被优化
+            final_sol = self.ls_toolkit.right_shift(neh_optimized_sol)
+            
+            # 【调试关键】right_shift 内部已经解码, 直接获取最终的目标值
+            new_objectives = final_sol.objectives
+
+            # --- 打印详细的调试信息 ---
+            print(f"  [个体 {i+1:02d}/{len(self.population)}] ", end="")
+            print(f"原目标: [{original_objectives[0]:.2f}, {original_objectives[1]:.2f}] -> ", end="")
+            print(f"新目标: [{new_objectives[0]:.2f}, {new_objectives[1]:.2f}] | ", end="")
+
+            # is_dominated(A, B) 表示 B是否被A支配
+            if is_dominated(final_sol, parent_sol):
+                print("✅ 提升")
+            elif is_dominated(parent_sol, final_sol):
+                print("❌ 变差")
+            elif np.allclose(original_objectives, new_objectives):
+                print("⚪️ 无变化")
+            else:
+                print("🔵 非支配")
+            # --- 调试信息结束 ---
+
+            polished_offspring.append(final_sol)
+            
+        return polished_offspring
             
 
     def _selection(self, fronts: List[List[Solution]]) -> List[Solution]:
