@@ -39,22 +39,34 @@ class Decoder:
                     target_period_start_time = self.problem.period_start_times[target_period_idx]
                     delayed_est = max(target_period_start_time, est)
 
-                    # 应用电价时段内的紧凑排列约束
-                    p_idx = np.searchsorted(self.problem.period_start_times, delayed_est, side='right') - 1
-                    p_idx = max(0, p_idx)
-                    
-                    if p_idx + 1 < len(self.problem.period_start_times):
-                        p_end_time = self.problem.period_start_times[p_idx + 1]
-                    else:
-                        p_end_time = self.problem.deadline
-                    
+                    # 应用电价时段约束，确保工序不跨时段
+                    # 使用循环持续将工序推迟到下一个时段，直到找到能完全容纳该工序的时段
                     actual_start_time = delayed_est
-                    if delayed_est + proc_time > p_end_time:
-                         if p_idx + 1 < len(self.problem.period_start_times):
-                             actual_start_time = self.problem.period_start_times[p_idx + 1]
-                         else: # 已是最后一个时段, 允许溢出, 后续会被惩罚
-                             actual_start_time = delayed_est
+                    while True:
+                        # 查找当前开始时间所属的时段索引
+                        p_idx = np.searchsorted(self.problem.period_start_times, actual_start_time, side='right') - 1
+                        p_idx = max(0, p_idx)
 
+                        # 获取该时段的结束时间
+                        if p_idx + 1 < len(self.problem.period_start_times):
+                            p_end_time = self.problem.period_start_times[p_idx + 1]
+                        else:
+                            # 这是最后一个时段，假设它无限延伸。后续的deadline检查会处理超时问题。
+                            p_end_time = float('inf')
+
+                        # 检查工序是否能在此时间段内完成
+                        if actual_start_time + proc_time <= p_end_time:
+                            # 可以容纳，找到了可行的开始时间
+                            break
+                        else:
+                            # 无法容纳，推到下一个时段的开始
+                            if p_idx + 1 < len(self.problem.period_start_times):
+                                actual_start_time = self.problem.period_start_times[p_idx + 1]
+                            else:
+                                # 已经是最后一个时段但仍无法容纳，跳出循环。
+                                # 这意味着完成时间将超过最后一个时段的起始点，后续由deadline惩罚机制处理。
+                                break
+                    
                     temp_completion_times[job_id, i] = actual_start_time + proc_time
             completion_times = temp_completion_times
 
@@ -86,7 +98,7 @@ class Decoder:
         solution.objectives = np.array([tec, tcta])
         solution.completion_times = completion_times # 缓存完成时间
         
-        return solution.objectives
+        return solution.objectives, completion_times
     
     def calculate_op_cost(self, start_time: float, proc_time: float) -> float:
         """

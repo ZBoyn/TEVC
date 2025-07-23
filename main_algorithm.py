@@ -24,7 +24,7 @@ class EvolutionaryAlgorithm:
         
         self.init_params = self.config['INIT_PARAMS']
         self.prob_params = self.config['PROB_PARAMS']
-        self.plot_params = self.config.get('PLOT_PARAMS') # 使用 .get 以防没有绘图参数
+        self.plot_params = self.config.get('PLOT_PARAMS')
         
         self.initializer = Initializer(self.problem, self.pop_size, self.init_params)
         self.decoder = Decoder(self.problem)
@@ -68,7 +68,9 @@ class EvolutionaryAlgorithm:
                     if np.random.rand() < prob_polish:
                         # 应用强力优化算子组合
                         neh_optimized_sol = self.ls_toolkit.destroy_rebuild(parent_sol, alpha)
+                        neh_optimized_sol.generated_by = "Destroy&Rebuild"
                         final_sol = self.ls_toolkit.right_shift(neh_optimized_sol)
+                        final_sol.generated_by = "Destroy&Rebuild+RightShift"
                         polished_offspring.append(final_sol)
                     else:
                         # 未被选中的直接进入下一代
@@ -146,50 +148,75 @@ class EvolutionaryAlgorithm:
         c_initial = bfo_params.get('C_initial', 0.1)
         c_final = bfo_params.get('C_final', 0.01)
         current_step_size = c_initial - (c_initial - c_final) * progress
-        
-        # 算子概率
-        prob_crossover = self.prob_params.get('prob_crossover', 0.9)
-        prob_mutation = self.prob_params.get('prob_mutation', 0.2)
-        
-        # 定义好用的轻量级局部搜索/变异算子集合
+
+        # -------------------------
+        # 1. 根据进化阶段动态调整算子池
+        # -------------------------
+        exploration_ratio = self.prob_params.get('exploration_phase_ratio', 0.3)  # 前 30% 代主要探索
+
+        # 基础算子
         mutation_operators = [
-            lambda sol: self.bfo_toolkit.chemotaxis(sol, current_step_size),
-            self.ls_toolkit.right_shift,
+            lambda sol: self.bfo_toolkit.chemotaxis(sol, current_step_size), # 趋化算子
             self.ls_toolkit.prefer_agent
         ]
 
-        # 1. 选择: 创建交配池
+        # 中后期再加入较强的 right_shift
+        if progress >= exploration_ratio:
+            mutation_operators.append(self.ls_toolkit.right_shift) # 右移算子
+
+        # 算子概率
+        prob_crossover = self.prob_params.get('prob_crossover', 0.9)
+        prob_mutation = self.prob_params.get('prob_mutation', 0.2)
+
+        # 2. 选择: 创建交配池
         mating_pool = [tournament_selection(self.population) for _ in range(self.pop_size)]
-        
-        # 2. 繁殖: 交叉与变异
+
+        # 3. 繁殖: 交叉与变异
         offspring_from_reproduction = []
         i = 0
         while len(offspring_from_reproduction) < self.pop_size:
             p1 = mating_pool[i]
             # 确保有p2, 即使种群大小为奇数
             p2 = mating_pool[i + 1] if i + 1 < self.pop_size else mating_pool[0]
-            i = (i + 2) % self.pop_size # 循环使用交配池
+            i = (i + 2) % self.pop_size  # 循环使用交配池
 
             # 交叉
             if np.random.rand() < prob_crossover:
                 c1, c2 = self.bfo_toolkit.reproduction_crossover(p1, p2)
+                c1.generated_by = "crossover"
+                c2.generated_by = "crossover"
             else:
                 c1, c2 = p1.copy(), p2.copy()
-            
+
             # 变异
             for child in [c1, c2]:
                 if np.random.rand() < prob_mutation:
-                    # 随机选择一个变异算子进行深度优化
                     operator = np.random.choice(mutation_operators)
                     mutated_child = operator(child)
+                    # 从函数引用中获取可读的算子名称
+                    operator_name = getattr(operator, '__name__', 'unknown_operator')
+                    if hasattr(operator, '__self__'):
+                        operator_name = f"{operator.__self__.__class__.__name__}.{operator_name}"
+                    mutated_child.generated_by = f"mutation:{operator_name}"
                     offspring_from_reproduction.append(mutated_child)
                 else:
                     offspring_from_reproduction.append(child)
 
-        # 确保种群大小精确
+        # 保证种群大小精确
         offspring_population = offspring_from_reproduction[:self.pop_size]
 
-        # 3. 评估
+        # -------------------------
+        # 4. 周期性迁徙操作 (大步刷新多样性)
+        # -------------------------
+        migration_freq = self.prob_params.get('migration_freq', 10)
+        if migration_freq > 0 and (current_gen + 1) % migration_freq == 0:
+            print(f"触发迁徙算子: 第 {current_gen + 1} 代, 对子代进行重置以提升多样性…")
+            migrated_offspring = self.bfo_toolkit.migration(offspring_population)
+            for sol in migrated_offspring:
+                sol.generated_by = "migration"
+            offspring_population = migrated_offspring
+
+        # 5. 评估
         for sol in offspring_population:
             if sol.objectives is None:
                 self.decoder.decode(sol)

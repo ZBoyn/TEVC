@@ -83,6 +83,6 @@ if __name__ == '__main__':
     #              '3M9-1', '3M9-2', '3M9-3','3M9-4','3M9-5',
     #              '3M10-5', '3M10-11', '3M10-12','3M10-13','3M10-14']
                  
-    instances = ['3M7-3']
+    instances = ['3M10-5']
     for instance in instances:
         plot_comparison(instance)

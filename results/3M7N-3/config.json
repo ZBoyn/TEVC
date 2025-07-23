@@ -24,14 +24,15 @@
         "migration_tcta_weight": 0.5
     },
     "PROB_PARAMS": {
-        "prob_crossover": 0.3,
+        "prob_crossover": 0.9,
         "prob_chemotaxis": 0.3,
         "prob_prefer_agent": 0.2,
         "prob_right_shift": 0.2,
         "polishing_phase_gens": 30,
         "destroy_rebuild_alpha": 0.5,
         "prob_polish": 0.4,
-        "prob_mutation": 0.2
+        "prob_mutation": 0.2,
+        "migration_freq": 50
     },
-    "elapsed_time_seconds": 38.304283142089844
+    "elapsed_time_seconds": 60.91224813461304
 }

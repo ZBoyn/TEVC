@@ -2,6 +2,7 @@ import numpy as np
 from pro_def import ProblemDefinition, Solution
 from moea_tools import is_dominated
 from typing import List
+import os
 
 class BFO_Operators:
     """
@@ -169,6 +170,25 @@ class LocalSearch_Operators:
         self.problem = problem_def
         self.decoder = decoder
 
+    def _first_valid_start(self, est: float, proc_time: float) -> float:
+        """给定最早可能开始时间 est, 返回第一个能够在同一时段内加工完毕的开始时间。
+        若工序处理时间大于单时段长度, 会持续顺延到能够完整容纳的时段起点。
+        """
+        period_starts = self.problem.period_start_times
+        num_periods = self.problem.num_periods
+
+        cur_start = est
+        while True:
+            period_idx = np.searchsorted(period_starts, cur_start, side='right') - 1
+            # 如果已经超出最后一个已定义时段, 直接返回 (后续调度器会视为不合法解)
+            if period_idx >= num_periods - 1:
+                return cur_start
+            period_end = period_starts[period_idx + 1]
+            if cur_start + proc_time <= period_end:
+                return cur_start  # 本时段可完成
+            # 否则推到下一时段起点
+            cur_start = period_end
+
     def prefer_agent(self, parent_solution: Solution) -> Solution:
         """优势代理局部搜索算子
 
@@ -288,6 +308,9 @@ class LocalSearch_Operators:
         # final_ct_matrix 用于存储我们为每个工序确定的最终完成时间
         final_ct_matrix = base_ect_matrix.copy()
 
+        # 调试记录
+        debug_records = []
+
         for i in range(num_machines - 1, -1, -1):  # 从最后一道机器开始
             for j_idx in range(num_jobs - 1, -1, -1): # 从序列中最后一个工件开始
                 job_id = sequence[j_idx]
@@ -321,8 +344,11 @@ class LocalSearch_Operators:
                     continue
 
                 # 2b. 在[est, lst]窗口内, 为当前工序寻找成本最低的开始时间
-                best_start_time = est
-                min_cost = self.decoder.calculate_op_cost(est, proc_time)
+                # est 可能跨段, 先找到第一个合法开始时间
+                est_valid = self._first_valid_start(est, proc_time)
+
+                best_start_time = est_valid
+                min_cost = self.decoder.calculate_op_cost(est_valid, proc_time)
 
                 # 遍历所有可能涉及到的时段
                 start_p_idx = np.searchsorted(self.problem.period_start_times, est, side='right') - 1
@@ -332,27 +358,45 @@ class LocalSearch_Operators:
                     if p_idx >= len(self.problem.period_prices): continue
                     
                     potential_start = max(est, self.problem.period_start_times[p_idx])
-                    
-                    # 模拟解码器, 计算真实开始时间 (处理非抢占)
-                    p_end = self.problem.period_start_times[p_idx + 1]
-                    actual_start_time = potential_start if potential_start + proc_time <= p_end else p_end
 
-                    if actual_start_time > lst + 1e-6:
-                        break # 后续的移动更不可行
+                    candidate_start = self._first_valid_start(potential_start, proc_time)
 
-                    cost = self.decoder.calculate_op_cost(actual_start_time, proc_time)
+                    if candidate_start > lst + 1e-6:
+                        break  # 后续的移动更不可行
+
+                    cost = self.decoder.calculate_op_cost(candidate_start, proc_time)
                     if cost < min_cost:
                         min_cost = cost
-                        best_start_time = actual_start_time
+                        best_start_time = candidate_start
 
                 # 2c. 根据找到的最佳开始时间, 更新该工序的最终完成时间
                 final_ct_matrix[job_id, i] = best_start_time + proc_time
+
+                # 收集调试信息
+                debug_records.append({
+                    'job_id': int(job_id),
+                    'machine': int(i),
+                    'best_start_time': float(best_start_time),
+                    'proc_time': float(proc_time),
+                    'est': float(est),
+                    'lst': float(lst)
+                })
 
         # 3. 后处理: 将计算出的最终调度结果直接存入解中
         child_solution.final_schedule = final_ct_matrix
         child_solution.put_off = np.zeros_like(child_solution.put_off) # put_off不再使用, 但保持结构完整
 
         # 最后用标准的解码器验证并获得最终目标值
+        # 写入调试信息
+        try:
+            import json, datetime
+            os.makedirs('debug', exist_ok=True)
+            with open(os.path.join('debug', 'right_shift_debug.jsonl'), 'a', encoding='utf-8') as f:
+                json.dump({'timestamp': datetime.datetime.now().isoformat(), 'records': debug_records}, f, ensure_ascii=False)
+                f.write('\n')
+        except Exception:
+            pass
+
         self.decoder.decode(child_solution)
         return child_solution
 
@@ -382,13 +426,8 @@ class LocalSearch_Operators:
                 period_idx = np.searchsorted(self.problem.period_start_times, est, side='right') - 1
                 period_idx = max(0, period_idx) # 确保索引不为负
 
-                start_time = est
-                
-                # 检查是否需要跨时段
-                if period_idx < self.problem.num_periods - 1:
-                    period_end_time = self.problem.period_start_times[period_idx + 1]
-                    if start_time + proc_time > period_end_time:
-                        start_time = period_end_time # 非抢占, 只能推到下一个时段开始
+                # 使用新的工具函数确保不跨段
+                start_time = self._first_valid_start(est, proc_time)
                 
                 completion_times[job_id, i] = start_time + proc_time
                 

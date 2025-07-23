@@ -8,7 +8,7 @@ import json
 
 def save_and_plot_results(pareto_front: List[Solution], problem_def: ProblemDefinition, output_folder: str, config: dict):
     """
-    将Pareto前沿的解保存到CSV文件, 绘制散点图, 并保存当次运行的参数配置
+    将Pareto前沿的解保存到Excel文件的多个Sheet中, 绘制散点图, 并保存当次运行的参数配置
 
     Args:
         pareto_front (List[Solution]): 包含最优解的列表
@@ -23,31 +23,50 @@ def save_and_plot_results(pareto_front: List[Solution], problem_def: ProblemDefi
     # 确保结果文件夹存在
     os.makedirs(output_folder, exist_ok=True)
     
-    results_data = []
-    for sol in pareto_front:
-        period_schedule_str = "N/A"
-        if sol.completion_times is not None:
-            # 根据完成时间计算每个工序的开始时间
-            start_times = sol.completion_times - problem_def.processing_times
-            
-            # 找到每个开始时间对应的时段索引
-            period_indices = np.searchsorted(problem_def.period_start_times, start_times, side='right') - 1
-            
-            # 将二维数组格式化为字符串以便存储
-            period_schedule_str = ';'.join(','.join(map(str, row)) for row in period_indices)
+    # 主数据、开始时间和完成时间列表
+    main_data = []
+    completion_times_data = []
+    start_times_data = []
 
-        results_data.append({
+    for sol_idx, sol in enumerate(pareto_front):
+        main_data.append({
+            'solution_id': sol_idx,
             'TEC': sol.objectives[0],
             'TCTA': sol.objectives[1],
             'sequence': ','.join(map(str, sol.sequence)),
-            'period_schedule': period_schedule_str
+            'generated_by': sol.generated_by,
+            'put_off': ','.join(map(str, sol.put_off))
         })
-    
-    df = pd.DataFrame(results_data)
-    csv_path = os.path.join(output_folder, "pareto_front.csv")
-    df.to_csv(csv_path, index=False)
-    print(f"\n结果已保存到: {csv_path}")
 
+        if sol.completion_times is not None:
+            start_times = sol.completion_times - problem_def.processing_times
+            
+            # 展平并添加 solution_id
+            completion_times_data.append(pd.DataFrame(sol.completion_times).assign(solution_id=sol_idx))
+            start_times_data.append(pd.DataFrame(start_times).assign(solution_id=sol_idx))
+
+    # 创建主 DataFrame
+    df_main = pd.DataFrame(main_data)
+    
+    # 合并所有解的时间数据
+    df_completion_times = pd.concat(completion_times_data, ignore_index=True) if completion_times_data else pd.DataFrame()
+    df_start_times = pd.concat(start_times_data, ignore_index=True) if start_times_data else pd.DataFrame()
+
+    # 将 'solution_id' 列移动到第一列
+    if not df_completion_times.empty:
+        df_completion_times = df_completion_times[['solution_id'] + [col for col in df_completion_times.columns if col != 'solution_id']]
+    if not df_start_times.empty:
+        df_start_times = df_start_times[['solution_id'] + [col for col in df_start_times.columns if col != 'solution_id']]
+
+    # 使用 ExcelWriter 保存到多个 sheet
+    excel_path = os.path.join(output_folder, "pareto_front.xlsx")
+    with pd.ExcelWriter(excel_path, engine='openpyxl') as writer:
+        df_main.to_excel(writer, sheet_name='pareto_front', index=False)
+        df_completion_times.to_excel(writer, sheet_name='completion_times', index=False)
+        df_start_times.to_excel(writer, sheet_name='start_times', index=False)
+
+    print(f"\n结果已保存到 Excel 文件: {excel_path}")
+    
     # 保存参数配置
     config_path = os.path.join(output_folder, "config.json")
     with open(config_path, 'w') as f:

@@ -64,7 +64,8 @@ class Solution:
     """定义一个解(individual)的结构"""
     sequence: np.ndarray
     put_off: np.ndarray
-    
+    generated_by: str = "initialization"  # 新增: 记录生成该解的算子
+
     final_schedule: np.ndarray = None # 由right_shift算子生成
     completion_times: np.ndarray = None # 用于缓存解码后的完成时间
     
@@ -76,6 +77,7 @@ class Solution:
         """创建解的一个深拷贝"""
         return Solution(sequence=self.sequence.copy(),
                         put_off=self.put_off.copy(),
+                        generated_by=self.generated_by, # 复制算子来源
                         final_schedule=self.final_schedule.copy() if self.final_schedule is not None else None,
                         completion_times=self.completion_times.copy() if self.completion_times is not None else None,
                         objectives=self.objectives.copy(),

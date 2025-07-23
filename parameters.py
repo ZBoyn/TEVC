@@ -1,5 +1,5 @@
 CONFIG = {
-    'DATA_FILE_PATH': "data2/3M7N-3.txt",  # 数据文件路径
+    'DATA_FILE_PATH': "data2/3M10N-5.txt",  # 数据文件路径
     # 'DATA_FILE_PATH': "dataset/data_A3_J400_M4_1.txt",
     'PLOT_PARAMS': {
         'plot_frequency': 10, # 绘图频率
@@ -26,7 +26,7 @@ CONFIG = {
     },
     
     'PROB_PARAMS': {
-        'prob_crossover': 0.3, # 交叉概率
+        'prob_crossover': 0.9, # 交叉概率
         'prob_chemotaxis': 0.3, # 趋化概率
         'prob_prefer_agent': 0.2, # 偏好代理概率
         'prob_right_shift': 0.2, # 右移概率
@@ -34,5 +34,6 @@ CONFIG = {
         'destroy_rebuild_alpha': 0.5, # 破坏重建比例
         'prob_polish': 0.4, # 在精修阶段应用强力局部搜索的概率
         'prob_mutation': 0.2, # 常规进化中应用变异算子的概率
+        'migration_freq': 50, # 迁徙频率
     }
 }
