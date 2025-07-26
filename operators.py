@@ -295,7 +295,6 @@ class LocalSearch_Operators:
         """
         右移策略 (Right Shift) - 采用反向传播重写, 解决级联延迟问题
         """
-        # 0. 准备工作
         child_solution = parent_solution.copy()
         sequence = child_solution.sequence
         num_jobs, num_machines = self.problem.num_jobs, self.problem.num_machines
@@ -306,10 +305,7 @@ class LocalSearch_Operators:
 
         # 2. 核心: 反向传播计算最终调度
         # final_ct_matrix 用于存储我们为每个工序确定的最终完成时间
-        final_ct_matrix = base_ect_matrix.copy()
-
-        # 调试记录
-        debug_records = []
+        final_ct_matrix = base_ect_matrix.copy()  # 复制基准的最早完成时间
 
         for i in range(num_machines - 1, -1, -1):  # 从最后一道机器开始
             for j_idx in range(num_jobs - 1, -1, -1): # 从序列中最后一个工件开始
@@ -317,12 +313,12 @@ class LocalSearch_Operators:
                 proc_time = self.problem.processing_times[job_id, i]
 
                 # 2a. 确定当前工序(j,i)的调度时间窗 [est, lct]
-                # EST (最早开始时间) 由其前序工序的 *基准* 完成时间决定
+                # EST (最早开始时间) 由其前序工序的 基准 完成时间决定
                 est_from_prev_job = base_ect_matrix[sequence[j_idx - 1], i] if j_idx > 0 else 0
                 est_from_prev_machine = base_ect_matrix[job_id, i - 1] if i > 0 else 0
                 est = max(est_from_prev_job, est_from_prev_machine, self.problem.release_times[job_id])
 
-                # LCT (最晚完成时间) 由其后继工序 *已确定* 的最终开始时间决定
+                # LCT (最晚完成时间) 由其后继工序 已确定 的最终开始时间决定
                 lct_from_next_job = np.inf
                 if j_idx < num_jobs - 1:
                     next_job_id = sequence[j_idx + 1]
@@ -372,30 +368,10 @@ class LocalSearch_Operators:
                 # 2c. 根据找到的最佳开始时间, 更新该工序的最终完成时间
                 final_ct_matrix[job_id, i] = best_start_time + proc_time
 
-                # 收集调试信息
-                debug_records.append({
-                    'job_id': int(job_id),
-                    'machine': int(i),
-                    'best_start_time': float(best_start_time),
-                    'proc_time': float(proc_time),
-                    'est': float(est),
-                    'lst': float(lst)
-                })
-
         # 3. 后处理: 将计算出的最终调度结果直接存入解中
         child_solution.final_schedule = final_ct_matrix
         child_solution.put_off = np.zeros_like(child_solution.put_off) # put_off不再使用, 但保持结构完整
 
-        # 最后用标准的解码器验证并获得最终目标值
-        # 写入调试信息
-        try:
-            import json, datetime
-            os.makedirs('debug', exist_ok=True)
-            with open(os.path.join('debug', 'right_shift_debug.jsonl'), 'a', encoding='utf-8') as f:
-                json.dump({'timestamp': datetime.datetime.now().isoformat(), 'records': debug_records}, f, ensure_ascii=False)
-                f.write('\n')
-        except Exception:
-            pass
 
         self.decoder.decode(child_solution)
         return child_solution

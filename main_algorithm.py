@@ -149,9 +149,7 @@ class EvolutionaryAlgorithm:
         c_final = bfo_params.get('C_final', 0.01)
         current_step_size = c_initial - (c_initial - c_final) * progress
 
-        # -------------------------
         # 1. 根据进化阶段动态调整算子池
-        # -------------------------
         exploration_ratio = self.prob_params.get('exploration_phase_ratio', 0.3)  # 前 30% 代主要探索
 
         # 基础算子
@@ -205,9 +203,7 @@ class EvolutionaryAlgorithm:
         # 保证种群大小精确
         offspring_population = offspring_from_reproduction[:self.pop_size]
 
-        # -------------------------
         # 4. 周期性迁徙操作 (大步刷新多样性)
-        # -------------------------
         migration_freq = self.prob_params.get('migration_freq', 10)
         if migration_freq > 0 and (current_gen + 1) % migration_freq == 0:
             print(f"触发迁徙算子: 第 {current_gen + 1} 代, 对子代进行重置以提升多样性…")

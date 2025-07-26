@@ -4,10 +4,10 @@ from typing import List
 import matplotlib.pyplot as plt
 import pandas as pd
 
-proName = "3M10N-5"
+proName = "3M7N-1"
 DATA_FILE = Path(__file__).parent / "data2" / f"{proName}.txt"
 excel_file_path = f'results/{proName}/pareto_front.xlsx'
-solution_to_plot_id = 1
+solution_to_plot_id = 4
 
 def load_instance(path: Path) -> dict:
     with path.open("r", encoding="utf-8") as f:
@@ -94,7 +94,7 @@ try:
     S, F = schedule_jobs(JOB_SEQUENCE)
     TEC = sum(P[m][j] * E[m][j] * get_price_for_time(S[m][j]) for m in range(machine_num) for j in range(job_num))
     AGENT_TIME_SUM = agent_completion_sum(F)
-    print(f"--- 基于Excel工序 {solution_to_plot_id} 的初始调度结果 ---")
+    print(f"基于前沿解{solution_to_plot_id}的初始调度结果")
     print(f"TEC (总能耗): {TEC}")
     print(f"代理完工时间之和: {AGENT_TIME_SUM}")
 

@@ -18,7 +18,7 @@ def plot_comparison(instance_base_name: str):
     ea_instance_name = instance_base_name.replace('-', 'N-')
 
     bb_file_path = os.path.join('BBresults', f'{bb_instance_name}.txt')
-    ea_file_path = os.path.join('results', ea_instance_name, 'pareto_front.csv')
+    ea_file_path = os.path.join('results', ea_instance_name, 'pareto_front.xlsx')
 
     if not os.path.exists(bb_file_path):
         print(f"错误: B&B 结果文件未找到: {bb_file_path}")
@@ -43,7 +43,7 @@ def plot_comparison(instance_base_name: str):
                     break
         bb_df = pd.DataFrame({'TEC': tec_vals, 'TCTA': tcta_vals})
 
-        ea_df = pd.read_csv(ea_file_path)
+        ea_df = pd.read_excel(ea_file_path)
 
     except Exception as e:
         print(f"读取数据文件时发生错误: {e}")
@@ -83,6 +83,6 @@ if __name__ == '__main__':
     #              '3M9-1', '3M9-2', '3M9-3','3M9-4','3M9-5',
     #              '3M10-5', '3M10-11', '3M10-12','3M10-13','3M10-14']
                  
-    instances = ['3M10-5']
+    instances = ['3M7-1']
     for instance in instances:
         plot_comparison(instance)
