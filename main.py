@@ -9,7 +9,6 @@ import time
 
 def main():
     
-    # 从中央配置获取数据文件路径
     data_file_path = CONFIG['DATA_FILE_PATH']
     
     try:
@@ -18,12 +17,10 @@ def main():
         print(f"错误: 数据文件未找到, 请检查路径: {data_file_path}")
         return
     
-    # 动态设置输出文件夹
     problem_name = os.path.splitext(os.path.basename(data_file_path))[0]
     output_folder = os.path.join("results", problem_name)
     CONFIG['PLOT_PARAMS']['output_folder'] = output_folder
 
-    # 将整个配置字典传递给算法
     algorithm = EvolutionaryAlgorithm(
         problem_def=problem_def,
         config=CONFIG

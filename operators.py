@@ -1,7 +1,7 @@
 import numpy as np
 from pro_def import ProblemDefinition, Solution
 from moea_tools import is_dominated
-from typing import List
+from typing import List, Dict
 import os
 
 class BFO_Operators:
@@ -120,7 +120,7 @@ class BFO_Operators:
     
     def migration(self, population: List[Solution]) -> List[Solution]:
         """
-        自适应迁徙操作: 根据整个种群的表现，概率性地重置一部分"差"的个体
+        自适应迁徙操作: 根据整个种群的表现,概率性地重置一部分"差"的个体
 
         Args:
             population (List[Solution]): 当前种群
@@ -291,86 +291,195 @@ class LocalSearch_Operators:
                                   final_schedule=None)
         return final_solution
 
+    def _get_valid_time_slots(self, est: float, lst: float, proc_time: float) -> List[Dict]:
+        """
+        分析[est, lst]时间窗, 结合电价时段, 返回所有有效的、可放置工序的连续时间间隙 (时隙).
+        新版逻辑: 遍历所有时段, 计算交集, 确保稳健性.
+        """
+        if est > lst + 1e-6:
+            return []
+            
+        slots = []
+        
+        # 遍历每一个电价时段, 寻找交叉点
+        for p_idx in range(self.problem.num_periods):
+            period_start = self.problem.period_start_times[p_idx]
+            period_end = self.problem.period_start_times[p_idx + 1] if p_idx + 1 < len(self.problem.period_start_times) else self.problem.deadline
+            
+            # 1. 确定在本时段内, 工序的开始时间可以存在的有效范围
+            # 一个工序要完全包含在本时段, 其开始时间必须在 [period_start, period_end - proc_time]
+            period_valid_start = period_start
+            period_valid_end = period_end - proc_time
+
+            # 2. 计算这个范围与工序自身约束[est, lst]的交集
+            intersection_start = max(est, period_valid_start)
+            intersection_end = min(lst, period_valid_end)
+
+            # 3. 如果交集存在, 则它是一个有效的时隙
+            if intersection_start <= intersection_end + 1e-6:
+                slots.append({
+                    'start': intersection_start,
+                    'end': intersection_end,
+                    'price': self.problem.period_prices[p_idx]
+                })
+        
+        return slots
+
+
+    def _find_best_start_time(self, est: float, lst: float, proc_time: float, is_last_machine: bool, is_agent_last_job: bool) -> float:
+        """
+        在[est, lst]窗口内选择最佳开始时间.
+        
+        策略:
+        1. 非最后一台机器的工件: 
+           - 在不增大TEC且满足约束的基础上右移到LST(相等也右移)
+           - 为后续工件腾出空间
+        2. 最后一台机器的工件: 
+           - 代理最后工件: 同时段用EST,跨时段且更便宜可移动
+           - 非代理最后工件: 同时段用LST,跨时段且更便宜可移动
+        
+        硬约束: 不允许工件跨越时段加工
+        """
+        # 1. 获取所有有效的时隙(已确保不跨时段)
+        valid_slots = self._get_valid_time_slots(est, lst, proc_time)
+
+        if not valid_slots:
+            return est
+            
+        if not is_last_machine:
+            # 非最后一台机器: 在不增大TEC的基础上右移到LST
+            # 找到当前EST所在时段的电价
+            est_period_idx = np.searchsorted(self.problem.period_start_times, est, side='right') - 1
+            current_price = self.problem.period_prices[est_period_idx]
+            
+            # 检查LST所在时隙的电价
+            lst_slot = None
+            for slot in valid_slots:
+                if slot['start'] <= lst <= slot['end']:
+                    lst_slot = slot
+                    break
+            
+            if lst_slot and lst_slot['price'] <= current_price:
+                # LST所在时隙的电价可接受, 直接返回LST
+                return lst
+            else:
+                # LST所在时隙太贵, 找最后一个负担得起的时隙
+                affordable_slots = [s for s in valid_slots if s['price'] <= current_price]
+                if affordable_slots:
+                    return affordable_slots[-1]['end']
+                else:
+                    # 如果所有时隙都比当前更贵, 留在EST
+                    return est
+        else:
+            # 最后一台机器: 按原策略执行
+            # 检查EST和LST是否在同一时段
+            est_period_idx = np.searchsorted(self.problem.period_start_times, est, side='right') - 1
+            lst_period_idx = np.searchsorted(self.problem.period_start_times, lst, side='right') - 1
+            same_period = (est_period_idx == lst_period_idx)
+            
+            # 找到最低电价
+            min_price = min(slot['price'] for slot in valid_slots)
+            cheapest_slots = [s for s in valid_slots if abs(s['price'] - min_price) < 1e-6]
+            
+            if same_period:
+                # 同时段情况
+                if is_agent_last_job:
+                    # 代理最后工件: 使用EST(不影响TCTA)
+                    return est
+                else:
+                    # 非代理最后工件: 使用LST(为后续工件腾空间)
+                    return lst
+            else:
+                # 跨时段情况: 两种工件都移动到最便宜时段
+                if is_agent_last_job:
+                    # 代理最后工件: 移动到最便宜时段的开始位置
+                    return cheapest_slots[0]['start']
+                else:
+                    # 非代理最后工件: 移动到最便宜时段内的最晚位置
+                    target_slot = cheapest_slots[-1]  # 最后一个最便宜时隙
+                    return target_slot['end']
+
     def right_shift(self, parent_solution: Solution) -> Solution:
         """
         右移策略 (Right Shift) - 采用反向传播重写, 解决级联延迟问题
+        新版逻辑: 根据工序是否为代理的最终考核点, 以及是否在最终机器上, 采用不同推迟策略.
         """
         child_solution = parent_solution.copy()
         sequence = child_solution.sequence
         num_jobs, num_machines = self.problem.num_jobs, self.problem.num_machines
 
+        
+
         # 1. 计算基准的最早完成时间 (前向传播)
-        # 这个矩阵是固定的, 作为计算任何工序EST的依据
         base_ect_matrix = self._calculate_earliest_times(sequence)
 
         # 2. 核心: 反向传播计算最终调度
-        # final_ct_matrix 用于存储我们为每个工序确定的最终完成时间
-        final_ct_matrix = base_ect_matrix.copy()  # 复制基准的最早完成时间
+        final_ct_matrix = base_ect_matrix.copy()
+        
+        # 在最后一台机器上, 需要判断是否为代理的最后一个工件
+        seen_agents_on_last_machine = set()
 
         for i in range(num_machines - 1, -1, -1):  # 从最后一道机器开始
+            is_last_machine = (i == num_machines - 1)
+
             for j_idx in range(num_jobs - 1, -1, -1): # 从序列中最后一个工件开始
                 job_id = sequence[j_idx]
                 proc_time = self.problem.processing_times[job_id, i]
 
                 # 2a. 确定当前工序(j,i)的调度时间窗 [est, lct]
-                # EST (最早开始时间) 由其前序工序的 基准 完成时间决定
+                # 前一个工件在反向遍历中还未处理,使用base_ect_matrix
                 est_from_prev_job = base_ect_matrix[sequence[j_idx - 1], i] if j_idx > 0 else 0
+                # 前一台机器在反向遍历中还未处理,使用base_ect_matrix
                 est_from_prev_machine = base_ect_matrix[job_id, i - 1] if i > 0 else 0
                 est = max(est_from_prev_job, est_from_prev_machine, self.problem.release_times[job_id])
 
-                # LCT (最晚完成时间) 由其后继工序 已确定 的最终开始时间决定
                 lct_from_next_job = np.inf
                 if j_idx < num_jobs - 1:
                     next_job_id = sequence[j_idx + 1]
-                    # 后继工件的最终开始时间 = 最终完成时间 - 它的处理时间
                     lct_from_next_job = final_ct_matrix[next_job_id, i] - self.problem.processing_times[next_job_id, i]
 
                 lct_from_next_machine = np.inf
                 if i < num_machines - 1:
-                    # 后继工序的最终开始时间
                     lct_from_next_machine = final_ct_matrix[job_id, i + 1] - self.problem.processing_times[job_id, i + 1]
                 
-                # 同时要受全局 Deadline 约束
                 lct = min(lct_from_next_job, lct_from_next_machine, self.problem.deadline)
                 lst = lct - proc_time
 
                 # 如果没有可移动空间, 则该工序的最终完成时间就是其基准ECT, 直接进入下一次循环
                 if lst - est < 1e-6:
+                    # 在最后一台机器上,即使没有移动空间,也要维护seen_agents状态
+                    if is_last_machine:
+                        agent_id = self.problem.job_to_agent_map[job_id]
+                        seen_agents_on_last_machine.add(agent_id)
+
+                        
                     final_ct_matrix[job_id, i] = base_ect_matrix[job_id, i]
                     continue
-
-                # 2b. 在[est, lst]窗口内, 为当前工序寻找成本最低的开始时间
-                # est 可能跨段, 先找到第一个合法开始时间
-                est_valid = self._first_valid_start(est, proc_time)
-
-                best_start_time = est_valid
-                min_cost = self.decoder.calculate_op_cost(est_valid, proc_time)
-
-                # 遍历所有可能涉及到的时段
-                start_p_idx = np.searchsorted(self.problem.period_start_times, est, side='right') - 1
-                end_p_idx = np.searchsorted(self.problem.period_start_times, lst, side='right') - 1
-
-                for p_idx in range(start_p_idx, end_p_idx + 2):
-                    if p_idx >= len(self.problem.period_prices): continue
+                
+                # 2b. 根据新策略寻找最佳开始时间
+                is_agent_last_job = False # 默认不是代理最后工件
+                if is_last_machine:
+                    agent_id = self.problem.job_to_agent_map[job_id]
                     
-                    potential_start = max(est, self.problem.period_start_times[p_idx])
+                    # 由于是反向遍历, 第一次遇到的代理工件就是该代理的最终考核点
+                    is_last_job_for_agent = (agent_id not in seen_agents_on_last_machine)
 
-                    candidate_start = self._first_valid_start(potential_start, proc_time)
+                    if is_last_job_for_agent:
+                        is_agent_last_job = True # 是最终考核点
+                        seen_agents_on_last_machine.add(agent_id)
+                
+                # 调用新的辅助函数寻找最佳开始时间
+                best_start_time = self._find_best_start_time(est, lst, proc_time, is_last_machine, is_agent_last_job)
+                
 
-                    if candidate_start > lst + 1e-6:
-                        break  # 后续的移动更不可行
-
-                    cost = self.decoder.calculate_op_cost(candidate_start, proc_time)
-                    if cost < min_cost:
-                        min_cost = cost
-                        best_start_time = candidate_start
-
+                
                 # 2c. 根据找到的最佳开始时间, 更新该工序的最终完成时间
                 final_ct_matrix[job_id, i] = best_start_time + proc_time
 
         # 3. 后处理: 将计算出的最终调度结果直接存入解中
         child_solution.final_schedule = final_ct_matrix
         child_solution.put_off = np.zeros_like(child_solution.put_off) # put_off不再使用, 但保持结构完整
+
 
 
         self.decoder.decode(child_solution)

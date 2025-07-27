@@ -20,7 +20,6 @@ def save_and_plot_results(pareto_front: List[Solution], problem_def: ProblemDefi
         print("警告: Pareto前沿为空, 无法保存或绘图")
         return
 
-    # 确保结果文件夹存在
     os.makedirs(output_folder, exist_ok=True)
     
     # 主数据、开始时间和完成时间列表
@@ -45,7 +44,6 @@ def save_and_plot_results(pareto_front: List[Solution], problem_def: ProblemDefi
             completion_times_data.append(pd.DataFrame(sol.completion_times).assign(solution_id=sol_idx))
             start_times_data.append(pd.DataFrame(start_times).assign(solution_id=sol_idx))
 
-    # 创建主 DataFrame
     df_main = pd.DataFrame(main_data)
     
     # 合并所有解的时间数据
@@ -58,7 +56,6 @@ def save_and_plot_results(pareto_front: List[Solution], problem_def: ProblemDefi
     if not df_start_times.empty:
         df_start_times = df_start_times[['solution_id'] + [col for col in df_start_times.columns if col != 'solution_id']]
 
-    # 使用 ExcelWriter 保存到多个 sheet
     excel_path = os.path.join(output_folder, "pareto_front.xlsx")
     with pd.ExcelWriter(excel_path, engine='openpyxl') as writer:
         df_main.to_excel(writer, sheet_name='pareto_front', index=False)
@@ -67,7 +64,6 @@ def save_and_plot_results(pareto_front: List[Solution], problem_def: ProblemDefi
 
     print(f"\n结果已保存到 Excel 文件: {excel_path}")
     
-    # 保存参数配置
     config_path = os.path.join(output_folder, "config.json")
     with open(config_path, 'w') as f:
         json.dump(config, f, indent=4)

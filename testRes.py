@@ -7,7 +7,7 @@ import pandas as pd
 proName = "3M7N-1"
 DATA_FILE = Path(__file__).parent / "data2" / f"{proName}.txt"
 excel_file_path = f'results/{proName}/pareto_front.xlsx'
-solution_to_plot_id = 4
+solution_to_plot_id = 6
 
 def load_instance(path: Path) -> dict:
     with path.open("r", encoding="utf-8") as f:

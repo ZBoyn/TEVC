@@ -18,7 +18,7 @@ CONFIG = {
         'Mmax': 10,  # 最大步数
         'C_initial': 0.1, # 初始步长
         'C_final': 0.01, # 最终步长
-        'put_off_mutation_prob': 0.5, # 偏移量变异概率
+        'put_off_mutation_prob': 0.7, # 偏移量变异概率
         'put_off_mutation_strength': 5, # 偏移量变异强度(有多少元素会发生改变)
         'put_off_regression_prob': 0.7, # 偏移量回归概率(有多少元素会回归0)
         'migration_tec_weight': 0.5, # 迁移TEC权重
@@ -27,9 +27,10 @@ CONFIG = {
     
     'PROB_PARAMS': {
         'prob_crossover': 0.9, # 交叉概率
-        'prob_chemotaxis': 0.3, # 趋化概率
-        'prob_prefer_agent': 0.2, # 偏好代理概率
-        'prob_right_shift': 0.2, # 右移概率
+        'prob_mutation': 0.6, # 变异概率
+        # 'prob_chemotaxis': 0.3, # 趋化概率
+        # 'prob_prefer_agent': 0.4, # 偏好代理概率
+        # 'prob_right_shift': 0.2, # 右移概率
         'polishing_phase_gens': 30, # 精修阶段代数
         'destroy_rebuild_alpha': 0.5, # 破坏重建比例
         'prob_polish': 0.4, # 在精修阶段应用强力局部搜索的概率

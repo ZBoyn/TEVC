@@ -99,12 +99,10 @@ class EvolutionaryAlgorithm:
                 self.population = selection(fronts, self.pop_size)
 
 
-            # 定期绘制和保存帕累托前沿图
             if self.plot_params and self.plot_params.get('plot_frequency', 0) > 0 and (gen + 1) % self.plot_params['plot_frequency'] == 0:
                 output_folder = self.plot_params.get('output_folder', 'results/temp')
                 plot_intermediate_front(self.archive, gen + 1, output_folder)
 
-            # 打印日志
             print(f"新种群选择完毕。外部存档中最优解数量: {len(self.archive)}")
 
         # 算法结束, 返回外部存档中的所有最优解
