@@ -25,11 +25,12 @@
     },
     "PROB_PARAMS": {
         "prob_crossover": 0.9,
-        "prob_mutation": 0.2,
-        "polishing_phase_gens": 30,
+        "exploration_phase_ratio": 0.1,
+        "polishing_phase_gens": 0,
         "destroy_rebuild_alpha": 0.5,
         "prob_polish": 0.4,
-        "migration_freq": 50
+        "prob_mutation": 0.6,
+        "migration_freq": 20
     },
-    "elapsed_time_seconds": 54.26003074645996
+    "elapsed_time_seconds": 73.01338934898376
 }

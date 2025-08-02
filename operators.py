@@ -343,8 +343,14 @@ class LocalSearch_Operators:
         # 1. 获取所有有效的时隙(已确保不跨时段)
         valid_slots = self._get_valid_time_slots(est, lst, proc_time)
 
+        # 如果没有有效的时隙,意味着在[est, lst]内无法安放该工序而不跨越时段.
+        # 这种情况理论上是算法实现有问题,但作为保护,我们返回一个修正过的est,
+        # 尽力满足约束,尽管可能不是最优.
         if not valid_slots:
-            return est
+            # 修正est使其不跨时段
+            corrected_est = self._first_valid_start(est, proc_time)
+            # 确保修正后的时间点不晚于lst
+            return min(corrected_est, lst)
             
         if not is_last_machine:
             # 非最后一台机器: 在不增大TEC的基础上右移到LST
@@ -355,7 +361,8 @@ class LocalSearch_Operators:
             # 检查LST所在时隙的电价
             lst_slot = None
             for slot in valid_slots:
-                if slot['start'] <= lst <= slot['end']:
+                # 必须是 <= lst, 因为lst本身就是一个有效的可开始时间点
+                if slot['start'] <= lst <= slot['end'] + 1e-6:
                     lst_slot = slot
                     break
             
@@ -368,8 +375,8 @@ class LocalSearch_Operators:
                 if affordable_slots:
                     return affordable_slots[-1]['end']
                 else:
-                    # 如果所有时隙都比当前更贵, 留在EST
-                    return est
+                    # 如果所有时隙都比当前更贵, 留在EST, 但需保证EST有效
+                    return min(self._first_valid_start(est, proc_time), lst)
         else:
             # 最后一台机器: 按原策略执行
             # 检查EST和LST是否在同一时段
@@ -384,11 +391,14 @@ class LocalSearch_Operators:
             if same_period:
                 # 同时段情况
                 if is_agent_last_job:
-                    # 代理最后工件: 使用EST(不影响TCTA)
-                    return est
+                    # 代理最后工件: 使用EST(不影响TCTA), 但需保证其有效性
+                    return min(self._first_valid_start(est, proc_time), lst)
                 else:
-                    # 非代理最后工件: 使用LST(为后续工件腾空间)
-                    return lst
+                    # 非代理最后工件: 使用最晚可用时间(为后续工件腾空间)
+                    # 直接返回 lst 是错误的, 因为 lst 可能导致跨时段.
+                    # 正确做法是返回当前时段内有效的最晚开始时间.
+                    # 因为 same_period 为 True, valid_slots 中只有一个时隙.
+                    return valid_slots[0]['end']
             else:
                 # 跨时段情况: 两种工件都移动到最便宜时段
                 if is_agent_last_job:

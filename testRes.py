@@ -4,10 +4,10 @@ from typing import List
 import matplotlib.pyplot as plt
 import pandas as pd
 
-proName = "3M7N-1"
+proName = "3M9N-3"
 DATA_FILE = Path(__file__).parent / "data2" / f"{proName}.txt"
 excel_file_path = f'results/{proName}/pareto_front.xlsx'
-solution_to_plot_id = 6
+solution_to_plot_id = 11
 
 def load_instance(path: Path) -> dict:
     with path.open("r", encoding="utf-8") as f:

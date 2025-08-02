@@ -67,9 +67,9 @@ class EvolutionaryAlgorithm:
                 for parent_sol in self.population:
                     if np.random.rand() < prob_polish:
                         # 应用强力优化算子组合
-                        neh_optimized_sol = self.ls_toolkit.destroy_rebuild(parent_sol, alpha)
-                        neh_optimized_sol.generated_by = "Destroy&Rebuild"
-                        final_sol = self.ls_toolkit.right_shift(neh_optimized_sol)
+                        # neh_optimized_sol = self.ls_toolkit.destroy_rebuild(parent_sol, alpha)
+                        # neh_optimized_sol.generated_by = "Destroy&Rebuild"
+                        final_sol = self.ls_toolkit.right_shift(parent_sol)
                         final_sol.generated_by = "Destroy&Rebuild+RightShift"
                         polished_offspring.append(final_sol)
                     else:
@@ -97,7 +97,6 @@ class EvolutionaryAlgorithm:
                 unique_population = remove_duplicates(combined_population)
                 fronts = non_dominated_sort(unique_population)
                 self.population = selection(fronts, self.pop_size)
-
 
             if self.plot_params and self.plot_params.get('plot_frequency', 0) > 0 and (gen + 1) % self.plot_params['plot_frequency'] == 0:
                 output_folder = self.plot_params.get('output_folder', 'results/temp')

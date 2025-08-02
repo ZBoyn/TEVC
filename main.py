@@ -1,6 +1,6 @@
 from pro_def import ProblemDefinition, Solution
 from data_loader_new import load_problem_g_format
-from data_loader import load_problem_from_file
+# from data_loader import load_problem_from_file
 from main_algorithm import EvolutionaryAlgorithm
 from results_handler import save_and_plot_results
 from parameters import CONFIG
