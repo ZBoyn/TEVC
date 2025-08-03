@@ -1,6 +1,6 @@
 CONFIG = {
-    'DATA_FILE_PATH': "data2/3M7N-5.txt",  # 数据文件路径
-    # 'DATA_FILE_PATH': "dataset/data_A5_J800_M4_1.txt",
+    # 'DATA_FILE_PATH': "data2/3M7N-5.txt",  # 数据文件路径
+    'DATA_FILE_PATH': "dataset/data_A5_J800_M4_1.txt",
     'PLOT_PARAMS': {
         'plot_frequency': 10, # 绘图频率
     },

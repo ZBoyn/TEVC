@@ -99,34 +99,26 @@ class BoundCalculator:
         machine_ready_times = actual_completion_times.max(axis=0) if node.sequence else np.zeros(problem.num_machines)
         machine_lbs = np.zeros(problem.num_machines)
         
-        # PADA rule simulation (simplified: using SPT as a proxy for agent priority)
-        # A full PADA implementation is complex, SPT is a common heuristic.
         unscheduled_jobs_list = list(node.unscheduled_jobs)
         unscheduled_jobs_list.sort(key=lambda jid: problem.job_total_processing_times[jid])
 
-        # Calculate LB for each machine
         for m in range(problem.num_machines):
             temp_machine_time = machine_ready_times[m]
-            # Calculate completion times for unscheduled jobs on this machine
             for job_id in unscheduled_jobs_list:
                 est = max(temp_machine_time, problem.release_times[job_id])
-                # A very loose LB for previous machine completion time
                 est_from_prev_machines = sum(problem.processing_times[job_id, :m])
                 est = max(est, est_from_prev_machines)
                 temp_machine_time = est + problem.processing_times[job_id, m]
             
-            # Tail correction for all but the last machine
             if m < problem.num_machines - 1 and unscheduled_jobs_list:
                 min_remaining_proc_time = min(problem.processing_times[jid, m+1:].sum() for jid in unscheduled_jobs_list)
                 machine_lbs[m] = temp_machine_time + min_remaining_proc_time
             else:
                 machine_lbs[m] = temp_machine_time
         
-        # Total LB is max over machines, plus scheduled part
         scheduled_makespans = actual_completion_times[:, -1] if node.sequence else np.array([0])
         overall_lb = max(np.max(machine_lbs), np.max(scheduled_makespans))
         
-        # For TCTA, we should return a value proportional to makespan
         return overall_lb * np.sum(problem.agent_weights)
 
 class PruningRules:

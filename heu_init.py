@@ -1,6 +1,7 @@
 import numpy as np
 from pro_def import ProblemDefinition, Solution
-from typing import List
+from typing import List, Tuple, Optional
+from bb_heu import HeuristicBBSolver
 
 class Initializer:
     """根据不同策略初始化解的种群"""
@@ -163,8 +164,133 @@ class Initializer:
         sequence = np.random.permutation(self.problem.num_jobs)
         return Solution(sequence=sequence, put_off=np.zeros_like(self.problem.processing_times))
 
-    def initialize_population(self) -> List[Solution]:
+    def complete_partial_sequence_with_h1(self, partial_sequence: List[int], partial_put_off: np.ndarray) -> Solution:
+        """使用启发式1补全不完整的序列"""
+        # 获取已安排的工件
+        scheduled_jobs = set(partial_sequence)
+        # 获取未安排的工件
+        unscheduled_jobs = set(range(self.problem.num_jobs)) - scheduled_jobs
+        
+        # 计算当前时间（基于已安排工件的完成时间）
+        current_time = 0.0
+        if partial_sequence:
+            # 简单估算当前时间（这里可以根据实际需要调整）
+            current_time = sum(self.problem.processing_times[job, 0] for job in partial_sequence)
+        
+        # 使用启发式1的选择逻辑补全剩余序列
+        agent_priority_map = {agent_id: priority for priority, agent_id in enumerate(self.problem.agent_priority)}
+        
+        def selection_logic_h1(available_jobs: List[int], current_time: float) -> int:
+            # 根据代理优先级对可用工件进行排序（优先级越小越靠前）
+            available_jobs.sort(key=lambda job_id: agent_priority_map[self.problem.job_to_agent_map[job_id]])
+            return available_jobs[0] # 返回最高优先级的工件
+        
+        # 补全序列
+        completed_sequence = list(partial_sequence)
+        completed_put_off = partial_put_off.copy()
+        
+        while unscheduled_jobs:
+            # 找到在当前时间已释放且可用的工件
+            available_jobs = [j for j in unscheduled_jobs if self.problem.release_times[j] <= current_time]
+            if not available_jobs:
+                # 当前时间没有可用的工件，快进到下一个工件的释放时间
+                next_release_time = min(self.problem.release_times[j] for j in unscheduled_jobs)
+                current_time = next_release_time
+                continue
+            
+            # 使用启发式1选择下一个工件
+            next_job = selection_logic_h1(available_jobs, current_time)
+            completed_sequence.append(next_job)
+            unscheduled_jobs.remove(next_job)
+            current_time += self.problem.processing_times[next_job, 0]
+        
+        return Solution(sequence=np.array(completed_sequence), put_off=completed_put_off, generated_by="h1_completion")
+
+    def complete_partial_sequence_with_h2(self, partial_sequence: List[int], partial_put_off: np.ndarray) -> Solution:
+        """使用启发式2补全不完整的序列"""
+        # 获取已安排的工件
+        scheduled_jobs = set(partial_sequence)
+        # 获取未安排的工件
+        unscheduled_jobs = set(range(self.problem.num_jobs)) - scheduled_jobs
+        
+        # 计算当前时间（基于已安排工件的完成时间）
+        current_time = 0.0
+        if partial_sequence:
+            # 简单估算当前时间（这里可以根据实际需要调整）
+            current_time = sum(self.problem.processing_times[job, 0] for job in partial_sequence)
+        
+        # 使用启发式2的选择逻辑补全剩余序列
+        agent_priority_map = {agent_id: priority for priority, agent_id in enumerate(self.problem.agent_priority)}
+        
+        def selection_logic_h2(available_jobs: List[int], current_time: float) -> int:
+            # 判断当前时间是否处于最低电价时段
+            current_period = np.searchsorted(self.problem.period_start_times, current_time, side='right') - 1
+            
+            if current_period == self.problem.cheapest_period_index:
+                # 如果是，按总能耗降序排序（能耗最高的优先）
+                available_jobs.sort(key=lambda job_id: self.problem.job_total_energy[job_id], reverse=True)
+            else:
+                # 如果不是，按代理优先级升序排序
+                available_jobs.sort(key=lambda job_id: agent_priority_map[self.problem.job_to_agent_map[job_id]])
+
+            return available_jobs[0]
+        
+        # 补全序列
+        completed_sequence = list(partial_sequence)
+        completed_put_off = partial_put_off.copy()
+        
+        while unscheduled_jobs:
+            # 找到在当前时间已释放且可用的工件
+            available_jobs = [j for j in unscheduled_jobs if self.problem.release_times[j] <= current_time]
+            if not available_jobs:
+                # 当前时间没有可用的工件，快进到下一个工件的释放时间
+                next_release_time = min(self.problem.release_times[j] for j in unscheduled_jobs)
+                current_time = next_release_time
+                continue
+            
+            # 使用启发式2选择下一个工件
+            next_job = selection_logic_h2(available_jobs, current_time)
+            completed_sequence.append(next_job)
+            unscheduled_jobs.remove(next_job)
+            current_time += self.problem.processing_times[next_job, 0]
+        
+        return Solution(sequence=np.array(completed_sequence), put_off=completed_put_off, generated_by="h2_completion")
+
+    def get_partial_solutions_from_bb_heu(self, objective_types: List[str] = None) -> List[Tuple[List[int], np.ndarray]]:
+        """从bb_heu获取不完整的解
+        
+        Args:
+            objective_types: 目标函数类型列表，默认为['TCTA']
+        
+        Returns:
+            List[Tuple[List[int], np.ndarray]]: 不完整解列表
+        """
+        if objective_types is None:
+            objective_types = ['TCTA']
+        
+        partial_solutions = []
+        bb_solver = HeuristicBBSolver(self.problem)
+        
+        for obj_type in objective_types:
+            print(f"使用bb_heu获取 {obj_type} 目标的不完整解...")
+            try:
+                solution = bb_solver.find_heuristic_solution(obj_type, verbose=False)
+                if solution:
+                    partial_seq, partial_put_off = solution
+                    print(f"  获得 {obj_type} 不完整解，已安排 {len(partial_seq)} 个工件")
+                    partial_solutions.append((partial_seq, partial_put_off))
+                else:
+                    print(f"  未能获得 {obj_type} 的不完整解")
+            except Exception as e:
+                print(f"  获取 {obj_type} 不完整解时出错: {e}")
+        
+        return partial_solutions
+
+    def initialize_population(self, partial_solutions: List[Tuple[List[int], np.ndarray]] = None) -> List[Solution]:
         """初始化种群
+        
+        Args:
+            partial_solutions: 来自bb_heu的不完整解列表, 每个元素为(sequence, put_off_matrix)
         
         Returns:
             List[Solution]: 初始化后的种群
@@ -175,28 +301,54 @@ class Initializer:
         random_init_ratio = self.params.get('random_init_ratio', 1/3)
 
         print("初始化种群...")
-        if h1_count + h2_count > self.pop_size:
-            raise ValueError("启发式个体总数不能超过种群大小。")
         
         population = []
         elites = []
         
-        print(f"使用启发式1生成 {h1_count} 个个体...")
-        for _ in range(h1_count):
-            elite = self.generate_with_heuristic1()
-            population.append(elite)
-            elites.append(elite)
+        # 处理来自bb_heu的不完整解
+        if partial_solutions:
+            print(f"处理 {len(partial_solutions)} 个来自bb_heu的不完整解...")
+            for i, (partial_seq, partial_put_off) in enumerate(partial_solutions):
+                print(f"  处理第 {i+1} 个不完整解，已安排 {len(partial_seq)} 个工件")
+                
+                # 使用启发式1补全
+                h1_solution = self.complete_partial_sequence_with_h1(partial_seq, partial_put_off)
+                population.append(h1_solution)
+                elites.append(h1_solution)
+                
+                # 使用启发式2补全
+                h2_solution = self.complete_partial_sequence_with_h2(partial_seq, partial_put_off)
+                population.append(h2_solution)
+                elites.append(h2_solution)
         
-        print(f"使用启发式2生成 {h2_count} 个个体...")
-        for _ in range(h2_count):
-            elite = self.generate_with_heuristic2()
-            population.append(elite)
-            elites.append(elite)
+        # 生成额外的启发式个体
+        remaining_h1 = max(0, h1_count - len([s for s in population if s.generated_by == "h1_completion"]))
+        remaining_h2 = max(0, h2_count - len([s for s in population if s.generated_by == "h2_completion"]))
         
-        current_pop_size = len(population)
+        if remaining_h1 > 0:
+            print(f"使用启发式1生成 {remaining_h1} 个额外个体...")
+            for _ in range(remaining_h1):
+                elite = self.generate_with_heuristic1()
+                population.append(elite)
+                elites.append(elite)
+        
+        if remaining_h2 > 0:
+            print(f"使用启发式2生成 {remaining_h2} 个额外个体...")
+            for _ in range(remaining_h2):
+                elite = self.generate_with_heuristic2()
+                population.append(elite)
+                elites.append(elite)
+        
+        # 检查种群大小限制
+        if len(population) > self.pop_size:
+            print(f"警告：生成的个体数量 ({len(population)}) 超过种群大小 ({self.pop_size})，将截断到指定大小")
+            population = population[:self.pop_size]
+            elites = elites[:min(len(elites), self.pop_size // 2)]  # 保留一半的精英
+        
         # 循环生成剩余的个体
+        current_pop_size = len(population)
         for p in range(current_pop_size, self.pop_size):
-            if p % int(1/random_init_ratio) != (int(1/random_init_ratio) -1) :
+            if p % int(1/random_init_ratio) != (int(1/random_init_ratio) -1):
                 if elites: # 确保精英池不为空
                     # 对其序列进行多次交换操作
                     template_solution = elites[np.random.randint(0, len(elites))].copy()
