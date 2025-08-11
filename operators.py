@@ -42,11 +42,10 @@ class BFO_Operators:
             deta = np.column_stack([np.cos(theta), np.sin(theta)])
             new_positions = positions + current_step_size * deta
             
-            # 使用新的位置向量生成序列. 注意: 我们这里不直接使用 new_sequence = np.argsort(distances)
-            # 而是继续使用 BFO 思想, 从 new_positions 生成序列, 这样可以保留方向信息.
             distances = np.linalg.norm(new_positions, axis=1)
             new_sequence = np.argsort(distances)
             
+                        
             # 有偏向性地扰动put_off矩阵
             new_put_off = current_best_sol.put_off.copy() # 从当前最优解的put_off开始
             if np.random.rand() < put_off_mutation_prob:

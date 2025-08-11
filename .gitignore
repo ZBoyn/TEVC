@@ -1,0 +1,7 @@
+__pycache__/
+results/
+data2/
+dataset/
+idataset/
+*.pyc/
+Individual_results/

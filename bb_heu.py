@@ -113,7 +113,7 @@ class HeuristicBBSolver:
         start_time_m1 = max(last_completion_time, self.problem.release_times[job])
         if is_put_off:
             current_period_idx = np.searchsorted(self.problem.period_start_times, start_time_m1, side='right') - 1
-            if current_period_idx + 1 < self.problem.num_periods:
+            if current_period_idx + 1 < len(self.problem.period_start_times):
                 start_time_m1 = max(start_time_m1, self.problem.period_start_times[current_period_idx + 1])
         completion_time_m1 = start_time_m1 + self.problem.processing_times[job, 0]
         if completion_time_m1 > self.problem.deadline: return None

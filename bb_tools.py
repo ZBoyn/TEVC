@@ -36,7 +36,7 @@ class BoundCalculator:
                 start_time = max(est_from_prev_job, est_from_prev_machine, problem.release_times[job_id])
                 if i == 0 and seq_to_put_off_map.get(job_id, 0) == 1:
                     current_period_idx = np.searchsorted(problem.period_start_times, start_time, side='right') - 1
-                    if current_period_idx + 1 < problem.num_periods:
+                    if current_period_idx + 1 < len(problem.period_start_times):
                         start_time = max(start_time, problem.period_start_times[current_period_idx + 1])
                 actual_start_time = start_time
                 while True:
@@ -63,7 +63,7 @@ class BoundCalculator:
             if period_idx >= problem.num_periods - 1:
                 cost += remaining_proc_time * problem.period_prices[problem.num_periods - 1] * power
                 break
-            period_end_time = problem.period_start_times[period_idx + 1]
+            period_end_time = problem.period_start_times[period_idx + 1] if period_idx + 1 < len(problem.period_start_times) else problem.deadline
             time_to_process = min(remaining_proc_time, period_end_time - current_time)
             cost += time_to_process * problem.period_prices[period_idx] * power
             remaining_proc_time -= time_to_process
@@ -137,7 +137,7 @@ class PruningRules:
             if natural_period_idx == problem.cheapest_period_index:
                 cheapest_period_end_time = (
                     problem.period_start_times[natural_period_idx + 1] 
-                    if natural_period_idx + 1 < problem.num_periods 
+                    if natural_period_idx + 1 < len(problem.period_start_times) 
                     else float('inf')
                 )
                 proc_time_m1 = problem.processing_times[next_job, 0]

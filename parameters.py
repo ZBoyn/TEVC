@@ -1,14 +1,51 @@
+data = [
+    {'Agent': 3, 'Job': 400, 'Machine': 4},
+    {'Agent': 3, 'Job': 400, 'Machine': 6},
+    {'Agent': 3, 'Job': 400, 'Machine': 8},
+    {'Agent': 3, 'Job': 600, 'Machine': 4},
+    {'Agent': 3, 'Job': 600, 'Machine': 6},
+    {'Agent': 3, 'Job': 600, 'Machine': 8},
+    {'Agent': 3, 'Job': 800, 'Machine': 4},
+    {'Agent': 3, 'Job': 800, 'Machine': 6},
+    {'Agent': 3, 'Job': 800, 'Machine': 8},
+    
+    {'Agent': 5, 'Job': 400, 'Machine': 4},
+    {'Agent': 5, 'Job': 400, 'Machine': 6},
+    {'Agent': 5, 'Job': 400, 'Machine': 8},
+    {'Agent': 5, 'Job': 600, 'Machine': 4},
+    {'Agent': 5, 'Job': 600, 'Machine': 6},
+    {'Agent': 5, 'Job': 600, 'Machine': 8},
+    {'Agent': 5, 'Job': 800, 'Machine': 4},
+    {'Agent': 5, 'Job': 800, 'Machine': 6},
+    {'Agent': 5, 'Job': 800, 'Machine': 8},
+
+    {'Agent': 7, 'Job': 400, 'Machine': 4},
+    {'Agent': 7, 'Job': 400, 'Machine': 6},
+    {'Agent': 7, 'Job': 400, 'Machine': 8},
+    {'Agent': 7, 'Job': 600, 'Machine': 4},
+    {'Agent': 7, 'Job': 600, 'Machine': 6},
+    {'Agent': 7, 'Job': 600, 'Machine': 8},
+    {'Agent': 7, 'Job': 800, 'Machine': 4},
+    {'Agent': 7, 'Job': 800, 'Machine': 6},
+    {'Agent': 7, 'Job': 800, 'Machine': 8},
+]
+
+
+SCALE_NUM = 1  # 0 - 26 
+INSTANCE_NUM = 1 # 1 - 5
+
+DATA_FILE_PATH = f"dataset/data_A{data[SCALE_NUM]['Agent']}_J{data[SCALE_NUM]['Job']}_M{data[SCALE_NUM]['Machine']}_{INSTANCE_NUM}.txt"
+
 CONFIG = {
-    # 'DATA_FILE_PATH': "data2/3M7N-5.txt",  # 数据文件路径
-    'DATA_FILE_PATH': "dataset/data_A5_J800_M4_1.txt",
+
     'PLOT_PARAMS': {
-        'plot_frequency': 10, # 绘图频率
+        'plot_frequency': 50, # 绘图频率
     },
-    'POP_SIZE': 70, # 种群大小
-    'MAX_GENERATIONS': 1000, # 最大代数
+    'POP_SIZE': 30, # 种群大小
+    'MAX_GENERATIONS': 500, # 最大代数
     'INIT_PARAMS': {
-        'h1_count': 1, # 启发式1的解数量
-        'h2_count': 1, # 启发式2的解数量
+        'h1_count': 2, # 启发式1的解数量
+        'h2_count': 2, # 启发式2的解数量
         'mutation_swaps': 30, # 变异交换次数
         'agent_tca_estimation_samples': 10, # 代理TCA估计样本数
         'random_init_ratio': 1/3, # 随机初始化比例
@@ -19,8 +56,8 @@ CONFIG = {
         'C_initial': 0.1, # 初始步长
         'C_final': 0.01, # 最终步长
         'put_off_mutation_prob': 0.7, # 偏移量变异概率
-        'put_off_mutation_strength': 7, # 偏移量变异强度(有多少元素会发生改变)
-        'put_off_regression_prob': 0.7, # 偏移量回归概率(有多少元素会回归0)
+        'put_off_mutation_strength': 5, # 偏移量变异强度(有多少元素会发生改变)
+        'put_off_regression_prob': 0.5, # 偏移量回归概率(有多少元素会回归0)
         'migration_tec_weight': 0.5, # 迁移TEC权重
         'migration_tcta_weight': 0.5, # 迁移TCTA权重
     },
@@ -30,7 +67,7 @@ CONFIG = {
         # 'prob_chemotaxis': 0.3, # 趋化概率
         # 'prob_prefer_agent': 0.4, # 偏好代理概率
         # 'prob_right_shift': 0.2, # 右移概率
-        'exploration_phase_ratio': 0.4, # 探索阶段比例
+        'exploration_phase_ratio': 0.2, # 探索阶段比例
         'polishing_phase_gens': 0, # 精修阶段代数
         'destroy_rebuild_alpha': 0.5, # 破坏重建比例
         'prob_polish': 0.4, # 在精修阶段应用强力局部搜索的概率

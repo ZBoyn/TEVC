@@ -53,14 +53,14 @@ def plot_comparison(instance_base_name: str):
     fig, ax = plt.subplots(figsize=(12, 8))
 
     bb_sorted = bb_df.sort_values(by='TEC')
-    ax.plot(bb_sorted['TEC'], bb_sorted['TCTA'], marker='s', linestyle='-', color='red', label='B&B Algorithm', markersize=8, markerfacecolor='white', markeredgewidth=1.5)
+    ax.plot(bb_sorted['TEC'], bb_sorted['TCTA'], marker='s', linestyle='-', color='red', label='B&B', markersize=8, markerfacecolor='white', markeredgewidth=1.5)
 
     ea_sorted = ea_df.sort_values(by='TEC')
-    ax.plot(ea_sorted['TEC'], ea_sorted['TCTA'], marker='o', linestyle='--', color='blue', label='Evolutionary Algorithm', markersize=8, markerfacecolor='white', markeredgewidth=1.5)
+    ax.plot(ea_sorted['TEC'], ea_sorted['TCTA'], marker='o', linestyle='--', color='blue', label='MO_BFO', markersize=8, markerfacecolor='white', markeredgewidth=1.5)
 
     ax.set_title(f'Pareto Front Comparison: {instance_base_name}', fontsize=16, fontweight='bold')
-    ax.set_xlabel('Total Energy Consumption (TEC)', fontsize=12)
-    ax.set_ylabel('Total Completion Time Tardiness (TCTA)', fontsize=12)
+    ax.set_xlabel('TEC', fontsize=12)
+    ax.set_ylabel('TCTA', fontsize=12)
     ax.legend(fontsize=12)
     ax.tick_params(axis='both', which='major', labelsize=10)
     
@@ -78,13 +78,16 @@ def plot_comparison(instance_base_name: str):
 
 if __name__ == '__main__':
 
-    instances = ['3M7-1', '3M7-2', '3M7-3','3M7-4','3M7-5',
-                 '3M8-1', '3M8-2', '3M8-3','3M8-4','3M8-5',
-                 '3M9-1', '3M9-2', '3M9-3','3M9-4','3M9-5']
+    # instances = ['3M7-1', '3M7-2', '3M7-3','3M7-4','3M7-5',
+    #              '3M8-1', '3M8-2', '3M8-3','3M8-4','3M8-5',
+    #              '3M9-1', '3M9-2', '3M9-3','3M9-4','3M9-5']
     #              '3M10-5', '3M10-11', '3M10-12','3M10-13','3M10-14']
                  
-    # instances = ['3M9-3']
+    instances = ['3M10-15']
+    # instances = ['3M7-5']
 
     # instances = ['3M9-1', '3M9-2', '3M9-3', '3M9-4', '3M9-5']
+    # instances = ['3M10-1', '3M10-11', '3M10-3', '3M10-4', '3M10-5']
+    # instances = ['3M7-3', '3M9-4']
     for instance in instances:
         plot_comparison(instance)

@@ -80,7 +80,7 @@ class Initializer:
                     period_idx = np.searchsorted(self.problem.period_start_times, earliest_start_time, side='right') - 1
 
                     # 获取该时段的结束时间 (注意U[K]是总时长)
-                    period_end_time = self.problem.period_start_times[period_idx + 1]
+                    period_end_time = self.problem.period_start_times[period_idx + 1] if period_idx + 1 < len(self.problem.period_start_times) else self.problem.period_start_times[-1]
                     
                     actual_start_time = 0
                     if earliest_start_time + proc_time <= period_end_time:

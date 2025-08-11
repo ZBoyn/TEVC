@@ -3,13 +3,13 @@ from pro_def import ProblemDefinition, Solution
 from data_loader import load_problem_from_file
 from main_algorithm import EvolutionaryAlgorithm
 from results_handler import save_and_plot_results
-from parameters import CONFIG
+from parameters import CONFIG, DATA_FILE_PATH
 import os
 import time
 
 def main():
     
-    data_file_path = CONFIG['DATA_FILE_PATH']
+    data_file_path = DATA_FILE_PATH
     
     try:
         problem_def = load_problem_from_file(data_file_path)
@@ -18,7 +18,7 @@ def main():
         return
     
     problem_name = os.path.splitext(os.path.basename(data_file_path))[0]
-    output_folder = os.path.join("results_test", problem_name)
+    output_folder = os.path.join("Individual_results", problem_name)
     CONFIG['PLOT_PARAMS']['output_folder'] = output_folder
 
     algorithm = EvolutionaryAlgorithm(

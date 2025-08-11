@@ -4,10 +4,10 @@ from typing import List
 import matplotlib.pyplot as plt
 import pandas as pd
 
-proName = "3M9N-3"
+proName = "3M7N-2"
 DATA_FILE = Path(__file__).parent / "data2" / f"{proName}.txt"
 excel_file_path = f'results/{proName}/pareto_front.xlsx'
-solution_to_plot_id = 11
+solution_to_plot_id = 1
 
 def load_instance(path: Path) -> dict:
     with path.open("r", encoding="utf-8") as f:
@@ -99,19 +99,31 @@ try:
     print(f"代理完工时间之和: {AGENT_TIME_SUM}")
 
     fig, axs = plt.subplots(2, 1, figsize=(12, 8), sharex=True)
-    fig.subplots_adjust(hspace=0.5)
+    fig.subplots_adjust(hspace=0.2)
 
     ax1 = axs[0]
-    colors = plt.cm.get_cmap("tab20", job_num)
-    y_offsets = [i * 10 for i in range(machine_num)]
+    # 使用您偏好的颜色方案，围绕RGB值(219, 238, 243), (248, 206, 203), (235, 241, 223)创建颜色
+    preferred_colors = [
+        (219/255, 238/255, 243/255),  # 浅蓝
+        (248/255, 206/255, 203/255),  # 浅粉
+        (235/255, 241/255, 223/255),  # 浅绿
+        (255/255, 218/255, 185/255),  # 浅橙
+        (221/255, 160/255, 221/255),  # 浅紫
+        (176/255, 196/255, 222/255),  # 浅蓝灰
+        (255/255, 182/255, 193/255),  # 浅玫瑰
+        (144/255, 238/255, 144/255),  # 浅绿
+        (255/255, 218/255, 185/255),  # 浅杏
+    ]
+    y_offsets = [i * 8 for i in range(machine_num)]  # 减小间距
 
     for m in range(machine_num):
         for j in JOB_SEQUENCE:
             start = S[m][j]
             duration = P[m][j]
             if duration > 1e-6:
-                ax1.broken_barh([(start, duration)], (y_offsets[m], 8), facecolors=colors(j), edgecolor="black")
-                ax1.text(start + duration / 2, y_offsets[m] + 4, str(j), ha="center", va="center", color="white", fontsize=8)
+                color_idx = j % len(preferred_colors)
+                ax1.broken_barh([(start, duration)], (y_offsets[m], 6), facecolors=preferred_colors[color_idx], edgecolor="black")
+                ax1.text(start + duration / 2, y_offsets[m] + 3, f"J{j+1}", ha="center", va="center", color="black", fontsize=10, fontweight='bold')
 
     is_first_boundary_before = True
     for boundary in U:
@@ -119,10 +131,10 @@ try:
             ax1.axvline(x=boundary, color='r', linestyle='--', linewidth=1.2, label='Price Boundary' if is_first_boundary_before else "")
             is_first_boundary_before = False
     
-    ax1.set_yticks([y + 4 for y in y_offsets])
+    ax1.set_yticks([y + 3 for y in y_offsets])
     ax1.set_yticklabels([f"Machine {i + 1}" for i in range(machine_num)])
     ax1.set_ylabel("Machine")
-    ax1.set_title("Gantt Chart for Job Schedule (Before Right Shift)")
+    ax1.set_title("Before Right Shift", fontsize=14, fontweight='bold')
     ax1.grid(True, axis="x", linestyle="--", alpha=0.5)
     handles, labels = ax1.get_legend_handles_labels()
     if handles:
@@ -146,17 +158,18 @@ try:
             duration = c_times[job_id, m_idx] - start_time
             
             if duration > 1e-6:
+                color_idx = job_id % len(preferred_colors)
                 ax2.broken_barh(
                     xranges=[(start_time, duration)],
-                    yrange=(y_offsets[m_idx], 8),
-                    facecolors=colors(job_id),
+                    yrange=(y_offsets[m_idx], 6),
+                    facecolors=preferred_colors[color_idx],
                     edgecolor='black'
                 )
                 ax2.text(
                     x=start_time + duration / 2,
-                    y=y_offsets[m_idx] + 4,
-                    s=f"{job_id}",
-                    ha='center', va='center', color='white', fontsize=8
+                    y=y_offsets[m_idx] + 3,
+                    s=f"J{job_id+1}",
+                    ha='center', va='center', color='black', fontsize=10, fontweight='bold'
                 )
 
     is_first_boundary_after = True
@@ -165,11 +178,11 @@ try:
             ax2.axvline(x=boundary, color='red', linestyle='--', linewidth=1.2, label='Price Boundary' if is_first_boundary_after else "")
             is_first_boundary_after = False
 
-    ax2.set_yticks([y + 4 for y in y_offsets])
+    ax2.set_yticks([y + 3 for y in y_offsets])
     ax2.set_yticklabels([f"Machine {i + 1}" for i in range(num_machines_after)])
     ax2.set_xlabel("Time")
     ax2.set_ylabel("Machine")
-    ax2.set_title(f"Gantt Chart for Job Schedule After Right Shift (Solution ID: {solution_to_plot_id})")
+    ax2.set_title(f"After Right Shift", fontsize=14, fontweight='bold')
     ax2.grid(True, axis="x", linestyle="--", alpha=0.5)
     handles, labels = ax2.get_legend_handles_labels()
     if handles:
